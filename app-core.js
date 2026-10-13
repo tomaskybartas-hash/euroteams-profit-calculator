@@ -1,0 +1,1 @@
+// Placeholder copy marker. The original app logic remains in app.js until wrapper switch.
