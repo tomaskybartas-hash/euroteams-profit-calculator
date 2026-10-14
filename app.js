@@ -21,7 +21,7 @@
               terminology.src = 'terminology-patch.js?v=20261014-1';
               terminology.onload = () => {
                 const payroll = document.createElement('script');
-                payroll.src = 'payroll-net-module.js?v=20261014-2';
+                payroll.src = 'payroll-net-module-v2.js?v=20261014-1';
                 document.head.appendChild(payroll);
               };
               document.head.appendChild(terminology);
