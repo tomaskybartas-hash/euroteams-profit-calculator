@@ -87,6 +87,7 @@
     if($('monthlyEmployer')){
       $('monthlyEmployer').readOnly=true;
       $('monthlyEmployer').setAttribute('aria-readonly','true');
+      $('monthlyEmployer').step='0.01';
     }
     if(!$('payrollCostHelp') && $('monthlyEmployer')){
       const help=document.createElement('div');
@@ -168,8 +169,8 @@
   function updateCoreMonthlyEmployer(p){
     const input=$('monthlyEmployer');
     if(!input) return;
-    const value=String(p.payrollCost);
-    if(Math.abs(n(input.value)-p.payrollCost)>0.000001){
+    const value=p.payrollCost.toFixed(2);
+    if(input.value!==value){
       input.value=value;
       input.dispatchEvent(new Event('input',{bubbles:true}));
     }
@@ -237,51 +238,41 @@
         r(tr('Komandos pelnas','Team profit'),money(profit*workers),'green')
       ].join('');
     }
-
-    const tabs=$('scenarioTabs');
-    const tab=tabs?.children?.[activeIndex()];
-    const profitStrong=tab?.querySelector('.scenario-profit strong');
-    if(profitStrong) profitStrong.textContent=money(profit*workers);
   }
 
-  let busy=false;
   function recalc(){
-    if(busy) return;
     ensureUi();
-    translateUi();
     const monthly=$('monthlyFields');
-    const isMonthly=monthly && !monthly.classList.contains('hidden');
-    if(!isMonthly) return;
+    if(!monthly || monthly.classList.contains('hidden')) return;
     const cfg=getSettings();
     if($('pension2')) $('pension2').value=cfg.pension2?'yes':'no';
     if($('applyNpd')) $('applyNpd').value=cfg.applyNpd?'yes':'no';
-    if($('employerRate2026')) $('employerRate2026').value=cfg.employerRate;
-    if($('perDiem2026')) $('perDiem2026').value=cfg.perDiem;
-    if($('localTransport2026')) $('localTransport2026').value=cfg.localTransport;
-    if($('workwearTools2026')) $('workwearTools2026').value=cfg.workwearTools;
-    const net=n($('monthlyPay')?.value);
-    const p=grossFromNet(net,cfg);
-    busy=true;
+    if($('employerRate2026') && document.activeElement!==$('employerRate2026')) $('employerRate2026').value=Number(cfg.employerRate).toFixed(2);
+    if($('perDiem2026') && document.activeElement!==$('perDiem2026')) $('perDiem2026').value=Number(cfg.perDiem).toFixed(2);
+    if($('localTransport2026') && document.activeElement!==$('localTransport2026')) $('localTransport2026').value=Number(cfg.localTransport).toFixed(2);
+    if($('workwearTools2026') && document.activeElement!==$('workwearTools2026')) $('workwearTools2026').value=Number(cfg.workwearTools).toFixed(2);
+    const targetNet=n($('monthlyPay')?.value);
+    const p=grossFromNet(targetNet,cfg);
     updateCoreMonthlyEmployer(p);
-    busy=false;
     renderBreakdown(p);
     overrideResults(p,cfg);
+    translateUi();
   }
 
   document.addEventListener('input',e=>{
     if(e.target?.id==='monthlyPay') requestAnimationFrame(recalc);
   });
   document.addEventListener('click',e=>{
-    if(e.target.closest('#modeMonthly')||e.target.closest('#modeHourly')||e.target.closest('#ltBtn')||e.target.closest('#enBtn')||e.target.closest('#scenarioTabs')||e.target.closest('#addBtn')||e.target.closest('#deleteBtn')||e.target.closest('#resetBtn')){
+    if(e.target.closest('#modeMonthly')||e.target.closest('#ltBtn')||e.target.closest('#enBtn')||e.target.closest('#scenarioTabs')||e.target.closest('#addBtn')||e.target.closest('#deleteBtn')||e.target.closest('#resetBtn')){
       requestAnimationFrame(()=>requestAnimationFrame(recalc));
     }
   });
   const observer=new MutationObserver(()=>{
-    clearTimeout(window.__payroll2026Timer);
-    window.__payroll2026Timer=setTimeout(recalc,40);
+    clearTimeout(window.__etPayrollTimer);
+    window.__etPayrollTimer=setTimeout(recalc,30);
   });
-  const target=$('monthlyFields')?.parentElement || document.body;
-  observer.observe(target,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});
-  window.addEventListener('load',recalc);
-  setTimeout(recalc,100);
+  const app=$('app');
+  if(app) observer.observe(app,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});
+  window.addEventListener('load',()=>setTimeout(recalc,100));
+  setTimeout(recalc,150);
 })();
