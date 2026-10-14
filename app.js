@@ -25,6 +25,11 @@
                 payroll.onload = () => {
                   const clarity = document.createElement('script');
                   clarity.src = 'payroll-label-clarity.js?v=20261014-1';
+                  clarity.onload = () => {
+                    const profitSync = document.createElement('script');
+                    profitSync.src = 'profit-sync-fix.js?v=20261014-1';
+                    document.head.appendChild(profitSync);
+                  };
                   document.head.appendChild(clarity);
                 };
                 document.head.appendChild(payroll);
