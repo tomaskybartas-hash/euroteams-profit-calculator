@@ -16,6 +16,11 @@
           patch.onload = () => {
             const functionality = document.createElement('script');
             functionality.src = 'functionality-fix.js?v=20261014-1';
+            functionality.onload = () => {
+              const terminology = document.createElement('script');
+              terminology.src = 'terminology-patch.js?v=20261014-1';
+              document.head.appendChild(terminology);
+            };
             document.head.appendChild(functionality);
           };
           document.head.appendChild(patch);
