@@ -42,13 +42,14 @@
     let n;
     while ((n = walker.nextNode())) nodes.push(n);
     for (const node of nodes) {
-      let value = node.nodeValue || '';
+      const original = node.nodeValue || '';
+      let value = original;
       for (const [lt,en] of fragmentPairs) {
         const from = toEnglish ? lt : en;
         const to = toEnglish ? en : lt;
         if (value.includes(from)) value = value.split(from).join(to);
       }
-      node.nodeValue = value;
+      if (value !== original) node.nodeValue = value;
     }
   }
 
@@ -57,16 +58,17 @@
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     let node;
     while ((node = walker.nextNode())) {
-      let value = node.nodeValue || '';
+      const original = node.nodeValue || '';
+      let value = original;
       for (const [from,to] of map) {
         if (value.includes(from)) value = value.split(from).join(to);
       }
-      node.nodeValue = value;
+      if (value !== original) node.nodeValue = value;
     }
     const input = document.getElementById('nameInput');
     if (input) {
       const translated = map.get(input.value);
-      if (translated) input.value = translated;
+      if (translated && input.value !== translated) input.value = translated;
     }
   }
 
@@ -74,7 +76,8 @@
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     let node;
     while ((node = walker.nextNode())) {
-      let v = node.nodeValue || '';
+      const original = node.nodeValue || '';
+      let v = original;
       if (toEnglish) {
         v = v.replace(/(\d+) darbuotojas · mėnesio sumos/g, '$1 worker · monthly totals');
         v = v.replace(/(\d+) darbuotojų · mėnesio sumos/g, '$1 workers · monthly totals');
@@ -83,7 +86,7 @@
         v = v.replace(/Darbuotojo atlyginimas \+ ([\d.,]+) % papildomų darbdavio išlaidų/g, 'Worker pay + $1% additional employer costs');
         v = v.replace(/(\d+\/\d+) · (\d+) sav\. komandiruotėje \/ (\d+) sav\. namuose\. Visas ciklas: (\d+) sav\. Mėnesio valandos lieka įvestos; poilsis namuose jų automatiškai nesumažina\./g, '$1 · $2 weeks on assignment / $3 weeks home. Total cycle: $4 weeks. Monthly hours remain as entered; home leave does not reduce them automatically.');
       }
-      node.nodeValue = v;
+      if (v !== original) node.nodeValue = v;
     }
   }
 
@@ -104,7 +107,7 @@
     clearTimeout(window.__etLangPatchTimer);
     window.__etLangPatchTimer = setTimeout(apply, 25);
   });
-  obs.observe(document.body, {childList:true, subtree:true, characterData:true});
+  obs.observe(document.body, {childList:true, subtree:true});
 
   window.addEventListener('load', apply);
   setTimeout(apply, 100);
