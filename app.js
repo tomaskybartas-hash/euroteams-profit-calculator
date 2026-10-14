@@ -19,6 +19,11 @@
             functionality.onload = () => {
               const terminology = document.createElement('script');
               terminology.src = 'terminology-patch.js?v=20261014-1';
+              terminology.onload = () => {
+                const payroll = document.createElement('script');
+                payroll.src = 'payroll-2026.js?v=20261014-1';
+                document.head.appendChild(payroll);
+              };
               document.head.appendChild(terminology);
             };
             document.head.appendChild(functionality);
