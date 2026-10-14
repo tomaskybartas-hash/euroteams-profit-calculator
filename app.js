@@ -12,7 +12,7 @@
         language.src = 'full-language.js?v=20261014-3';
         language.onload = () => {
           const patch = document.createElement('script');
-          patch.src = 'language-patch.js?v=20261014-2';
+          patch.src = 'language-patch.js?v=20261014-3';
           patch.onload = () => {
             const functionality = document.createElement('script');
             functionality.src = 'functionality-fix.js?v=20261014-1';
