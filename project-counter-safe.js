@@ -1,6 +1,7 @@
 (() => {
   const getHeader = () => document.querySelector('.scen-head > div:first-child');
   const getTabs = () => document.getElementById('scenarioTabs');
+  const getCount = () => document.getElementById('scenarioCount');
   const isEnglish = () => document.getElementById('enBtn')?.classList.contains('active');
 
   function getActiveIndex() {
@@ -14,10 +15,27 @@
     return idx >= 0 ? idx : 0;
   }
 
+  function updateProjectHeader() {
+    const header = getHeader();
+    const count = getCount();
+    if (!header || !count) return;
+
+    const prefix = `${isEnglish() ? 'Project' : 'Projektas'} `;
+    let textNode = [...header.childNodes].find(n => n.nodeType === Node.TEXT_NODE);
+    if (!textNode) {
+      textNode = document.createTextNode(prefix);
+      header.insertBefore(textNode, count);
+    } else if (textNode.nodeValue !== prefix) {
+      textNode.nodeValue = prefix;
+    }
+
+    const wanted = String(getActiveIndex() + 1);
+    if (count.textContent !== wanted) count.textContent = wanted;
+  }
+
   function replaceStaticLabels() {
     const en = isEnglish();
-    const header = getHeader();
-    if (header) header.textContent = `${en ? 'Project' : 'Projektas'} ${getActiveIndex() + 1}`;
+    updateProjectHeader();
 
     const deleteBtn = document.getElementById('deleteBtn');
     if (deleteBtn) deleteBtn.textContent = en ? 'Delete project' : 'Ištrinti projektą';
@@ -79,7 +97,10 @@
   });
 
   const tabs = getTabs();
-  if (tabs) new MutationObserver(schedule).observe(tabs, { childList: true });
+  if (tabs) new MutationObserver(schedule).observe(tabs, { childList: true, subtree: true, attributes: true });
+
+  const count = getCount();
+  if (count) new MutationObserver(schedule).observe(count, { childList: true, characterData: true, subtree: true });
 
   schedule();
 })();
