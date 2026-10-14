@@ -7,6 +7,11 @@
     fix.onload = () => {
       const projectCounter = document.createElement('script');
       projectCounter.src = 'project-counter-safe.js?v=20261013-2';
+      projectCounter.onload = () => {
+        const language = document.createElement('script');
+        language.src = 'full-language.js?v=20261014-1';
+        document.head.appendChild(language);
+      };
       document.head.appendChild(projectCounter);
     };
     document.head.appendChild(fix);
