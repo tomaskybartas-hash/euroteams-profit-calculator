@@ -22,6 +22,11 @@
               terminology.onload = () => {
                 const payroll = document.createElement('script');
                 payroll.src = 'payroll-net-module-v4.js?v=20261014-2';
+                payroll.onload = () => {
+                  const clarity = document.createElement('script');
+                  clarity.src = 'payroll-label-clarity.js?v=20261014-1';
+                  document.head.appendChild(clarity);
+                };
                 document.head.appendChild(payroll);
               };
               document.head.appendChild(terminology);
