@@ -62,6 +62,9 @@
     document.querySelector('.navitem').textContent=t('▣ Maržos skaičiuoklė','▣ Margin calculator');
     document.querySelector('.scen-head > div:first-child').innerHTML=`${t('Projektas','Project')} <strong id="scenarioCount">${context().index+1}</strong> / ${context().state.scenarios.length}`;
     $('deleteBtn').disabled=context().state.scenarios.length<=1;
+    $('resultTitle').textContent=s.name;
+    $('presetSelect').options[1].textContent=t('Gamykla · 12,50 EUR NETO / val. · 200 val.','Factory · EUR 12.50 net / hour · 200 h');
+    $('presetSelect').options[2].textContent=t('Partneris · mėnesinis NETO atlyginimas','Partner · monthly net salary');
     $('savedMsg').textContent=t('Išsaugota šioje naršyklėje','Saved in this browser');
     const w=Math.max(1,Math.round(Number(s.workers)||1));
     const plural=w%100>=11&&w%100<=19?'darbuotojų':w%10===1?'darbuotojas':w%10>=2&&w%10<=9?'darbuotojai':'darbuotojų';

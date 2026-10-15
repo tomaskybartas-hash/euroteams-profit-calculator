@@ -4,7 +4,7 @@
     const src = files.shift();
     if(!src){ window.renderEuroteamsCore(); return; }
     const script = document.createElement('script');
-    script.src = src + '?v=20261015-qa2';
+    script.src = src + '?v=20261015-qa4';
     script.onload = next;
     script.onerror = () => { document.getElementById('savedMsg').textContent = 'Nepavyko įkelti skaičiuoklės / Calculator could not load'; };
     document.head.appendChild(script);

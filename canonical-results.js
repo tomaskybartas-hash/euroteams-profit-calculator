@@ -306,7 +306,7 @@
       `<tr><th scope="row">${tr('Pelno marža','Profit margin')}</th><td>${pct(c.margin)}</td></tr>`;
     if(focusedWorker){$('tableWorkers').replaceWith(focusedWorker);focusedWorker.focus();}
     $('tableWorkers').oninput=e=>{ $('workers').value=e.target.value;$('workers').dispatchEvent(new Event('input',{bubbles:true})); };
-    for(const row of tbody.rows){const label=row.cells[0].textContent;if(/Pelnas|pelnas|profit|margin|marža/i.test(label)&&!/Tarifas|rate/.test(label))tone(row.cells[1],c.profit);}
+    for(const row of tbody.rows){const label=row.cells[0].textContent;if(/Pelnas|pelnas|profit|margin|marža/i.test(label)&&!/Tarifas|rate/.test(label))tone(row.cells[1],/margin|marža/i.test(label)?c.margin:/valandą|per hour/i.test(label)?c.profitHour:c.profit);}
     const detail=$('payrollBreakdown');if(detail)detail.innerHTML=detailRows(c).map(([label,value])=>`<div class="metric"><span>${label}</span><strong>${money(value)}</strong></div>`).join('');
     if(c.base&&$('monthlyEmployer'))$('monthlyEmployer').value=c.base.payrollCost.toFixed(2);
     const status=$('a1Status');
@@ -443,7 +443,7 @@
   if(!document.querySelector('link[data-euroteams-audit-css]')){
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = 'final-audit.css?v=20261015-qa2';
+    link.href = 'final-audit.css?v=20261015-qa4';
     link.dataset.euroteamsAuditCss = '1';
     document.head.appendChild(link);
   }
