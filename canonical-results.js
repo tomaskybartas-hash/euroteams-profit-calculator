@@ -13,7 +13,7 @@
     includePerDiemInNet:true,
     country:'NL',
     days:30,
-    perDiemRate:64
+    perDiemRate:64, taxMode:'monthly',taxResident:true,otherAnnualIncome:0,priorSocialIncome:0,floorBase:1153,wageBasis:'monthly',contractWage:0,shortDays:0,customCountryLimit:0
   });
 
   const $ = id => document.getElementById(id);
@@ -28,81 +28,20 @@
   }).format(Number(Number(value).toPrecision(14)) || 0) + ' %';
 
   function mainState(){
-    try { return JSON.parse(localStorage.getItem(MAIN_KEY) || 'null'); }
+    try { return JSON.parse(window.EuroteamsStorage.getItem(MAIN_KEY) || 'null'); }
     catch { return null; }
   }
   function payrollState(){
-    try { return JSON.parse(localStorage.getItem(PAYROLL_KEY) || '{}') || {}; }
+    try { return JSON.parse(window.EuroteamsStorage.getItem(PAYROLL_KEY) || '{}') || {}; }
     catch { return {}; }
   }
   function settingsFor(index, override){
     return {...DEFAULTS, ...(payrollState()[String(index)] || {}), ...(override || {})};
   }
 
-  function npdForGross(gross, enabled){
-    if(!enabled) return 0;
-    if(gross <= 1153) return 747;
-    return Math.max(0, 747 - 0.49 * (gross - 1153));
-  }
-
-  function payrollFromGross(gross, cfg){
-    gross = n(gross);
-    const sodra = gross * 0.195;
-    const pension = cfg.pension2 ? gross * 0.03 : 0;
-    const npd = npdForGross(gross, cfg.applyNpd);
-    const gpmBase = Math.max(0, gross - npd);
-    const gpm = gpmBase * 0.20;
-    const net = gross - sodra - pension - gpm;
-    const employerTaxes = gross * (n(cfg.employerRate) / 100);
-    return {gross,sodra,pension,npd,gpmBase,gpm,net,employerTaxes,payrollCost:gross + employerTaxes};
-  }
-
-  function grossFromNet(target, cfg){
-    target = n(target);
-    if(!target) return payrollFromGross(0,cfg);
-    if(!cfg.applyNpd){
-      const denominator = 1 - 0.195 - (cfg.pension2 ? 0.03 : 0) - 0.20;
-      return payrollFromGross(target / denominator, cfg);
-    }
-    let lo = 0, hi = Math.max(2000, target * 3 + 1000);
-    while(payrollFromGross(hi,cfg).net < target) hi *= 2;
-    for(let i=0;i<120;i++){
-      const mid = (lo + hi) / 2;
-      if(payrollFromGross(mid,cfg).net < target) lo = mid; else hi = mid;
-    }
-    return payrollFromGross((lo + hi) / 2, cfg);
-  }
-
-  function posting(base, cfg, hours){
-    if(!cfg.a1){
-      return {
-        totalPerDiem:0, exemptPerDiem:0, taxablePerDiem:0, taxablePerDiemNet:0,
-        taxableEmployerTaxes:0, totalSodra:base.sodra, totalPension:base.pension,
-        totalGpm:base.gpm, paidToEmployee:base.net, payrollPostingCost:base.payrollCost,
-        fullyExempt:true, hourlyGross:hours ? base.gross / hours : 0
-      };
-    }
-    const totalPerDiem = n(cfg.perDiemRate) * n(cfg.days);
-    const hourlyGross = hours ? base.gross / hours : 0;
-    const fullyExempt = base.gross >= 1902.45 || hourlyGross >= 11.6325;
-    const countryRate=window.EuroteamsDailyRates?.[cfg.country||'NL']?.[2] ?? 0;
-    const countryLimit=n(countryRate)*n(cfg.days);
-    const exemptPerDiem = Math.min(totalPerDiem, countryLimit, fullyExempt ? totalPerDiem : base.gross * 0.50);
-    const taxablePerDiem = Math.max(0, totalPerDiem - exemptPerDiem);
-    const combined = payrollFromGross(base.gross + taxablePerDiem, cfg);
-    const extraSodra = Math.max(0, combined.sodra - base.sodra);
-    const extraPension = Math.max(0, combined.pension - base.pension);
-    const extraGpm = Math.max(0, combined.gpm - base.gpm);
-    const taxablePerDiemNet = Math.max(0, taxablePerDiem - extraSodra - extraPension - extraGpm);
-    const taxableEmployerTaxes = taxablePerDiem * (n(cfg.employerRate) / 100);
-    return {
-      totalPerDiem, exemptPerDiem, taxablePerDiem, taxablePerDiemNet, taxableEmployerTaxes,
-      totalSodra:combined.sodra, totalPension:combined.pension, totalGpm:combined.gpm,
-      paidToEmployee:base.net + exemptPerDiem + taxablePerDiemNet,
-      payrollPostingCost:base.payrollCost + totalPerDiem + taxableEmployerTaxes,
-      fullyExempt, hourlyGross
-    };
-  }
+  const payrollFromGross=(gross,cfg)=>window.EuroteamsTax2026.payroll(gross,cfg);
+  const grossFromNet=(target,cfg)=>window.EuroteamsTax2026.fromNet(target,cfg);
+  const posting=(base,cfg,hours)=>window.EuroteamsTax2026.posting(base,cfg,hours);
 
   function solveIncluded(target, cfg, hours){
     target = n(target);
@@ -277,14 +216,14 @@
         [tr('GPM nuo DU','Income tax on salary'),b.gpm],
         [tr('Pensijų kaupimas nuo DU','Pension contribution on salary'),b.pension],
         [tr('Darbdavio socialinės įmokos nuo DU','Employer social security on salary'),b.employerTaxes],
-        [tr('DU savikaina įmonei','Total payroll cost'),b.payrollCost]);
+        [tr('Darbdavio primoka iki įmokų grindų','Employer-funded minimum contribution top-up'),b.floorCost],[tr('DU savikaina įmonei','Total payroll cost'),b.payrollCost]);
       if(c.cfg.a1) rows.push(
         [tr('Bendra dienpinigių suma','Total daily allowance'),p.totalPerDiem],
         [tr('Neapmokestinami dienpinigiai','Tax-free daily allowance'),p.exemptPerDiem],
         [tr('Apmokestinami dienpinigiai (bruto)','Taxable daily allowance (gross)'),p.taxablePerDiem],
         [tr('Darbuotojo mokesčiai nuo dienpinigių','Employee taxes on daily allowance'),p.taxablePerDiem-p.taxablePerDiemNet],
         [tr('Darbdavio įmokos nuo dienpinigių','Employer contributions on daily allowance'),p.taxableEmployerTaxes],
-        [tr('Apmokestintų dienpinigių NETO dalis','Taxable daily allowance after tax'),p.taxablePerDiemNet],
+        [tr('Įmokų grindų primokos pokytis dėl dienpinigių','Minimum contribution top-up adjustment'),p.floorAdjustment],[tr('Apmokestintų dienpinigių NETO dalis','Taxable daily allowance after tax'),p.taxablePerDiemNet],
         [tr('Bendra darbuotojui išmokama suma','Total paid to employee'),p.paidToEmployee],
         [tr('DU ir dienpinigių savikaina','Payroll and daily allowance cost'),p.payrollPostingCost]);
     }else rows.push([tr('Darbuotojo NETO atlyginimas','Employee net salary'),c.employeeShown],[tr('Darbuotojo savikaina prieš logistiką','Employee cost before logistics'),c.payrollCostShown]);
@@ -318,7 +257,7 @@
         : c.cfg.a1?tr('Neapmokestinami dienpinigiai: ','Tax-free daily allowance: ')+money(c.post.exemptPerDiem)+tr(' · Apmokestinami: ',' · Taxable: ')+money(c.post.taxablePerDiem):'';
       status.className=Math.abs(difference)>.01?'calculation-warning':'help';
     }
-    setText($('employerHelp'),c.base?tr('Bruto DU + darbdavio įmokos nuo DU; dienpinigiai atskirai.','Gross salary + employer contributions on salary; daily allowance is separate.'):tr('NETO atlyginimas + įvestas papildomų išlaidų procentas.','Net salary + entered additional cost percentage.'));
+    setText($('employerHelp'),c.base?tr('Bruto DU + darbdavio įmokos ir grindų primoka; dienpinigiai atskirai.','Gross salary + employer contributions and minimum top-up; allowance is separate.'):tr('NETO atlyginimas + įvestas papildomų išlaidų procentas.','Net salary + entered additional cost percentage.'));
     const salaryHelp=$('salaryValue')?.closest('.metric')?.querySelector('small');
     setText(salaryHelp,c.cfg.a1&&c.cfg.includePerDiemInNet?tr('NETO DU + neapmokestinami ir apmokestinti dienpinigiai.','Net salary + tax-free and after-tax daily allowance.'):tr('Darbuotojo NETO atlyginimas be dienpinigių.','Employee net salary excluding daily allowance.'));
     const warnings=$('scenarioWarning');
@@ -326,7 +265,10 @@
       !c.housing?tr('Apgyvendinimo išlaidos neįtrauktos arba jas apmoka klientas.','Accommodation costs are excluded or paid by the client.'):null,
       !c.travelCost?tr('Kelionės išlaidos neįtrauktos arba jas apmoka klientas.','Travel costs are excluded or paid by the client.'):null,
       tr('Pelnas prieš pelno mokestį ir neįvestas išlaidas.','Profit before corporate tax and costs not entered.'),
-      c.base?tr('Taikomas Lietuvos mėnesio DU modelis: GPM 20 %. Metinis GPM, įmokų lubos ir priimančios šalies atlygio reikalavimai tikrinami atskirai.','Uses the Lithuanian monthly payroll model at 20% income tax. Annual tax, contribution caps and host-country pay requirements need separate verification.'):tr('Darbdavio išlaidų procentas yra planavimo prielaida.','The employer cost percentage is a planning assumption.')
+      c.cfg.a1&&!n(c.cfg.contractWage)?tr('Dienpinigių lengvatai naudojamas apskaičiuotas DU. Sutikrinkite sutartinį atlyginimą, A1 galiojimą ir GPM apmokestinimo valstybę.','Allowance relief uses calculated pay. Verify contractual pay, A1 validity and the country entitled to tax wages.'):null,
+      c.cfg.a1&&c.post.maximum>0&&n(c.cfg.perDiemRate)<c.post.maximum?tr('Sumažinta dienpinigių norma turi būti pagrįsta: kolektyvinėje sutartyje bent 50 %, vidaus tvarkoje bent 65 % ir komandiruotė bent 7 dienų.','A reduced daily rate needs a valid basis: at least 50% under a collective agreement, or 65% under internal rules for trips lasting at least 7 days.'):null,
+      c.cfg.a1&&c.cfg.country==='OTHER'&&!n(c.cfg.customCountryLimit)?tr('Kitai šaliai neįvesta patikrinta neapmokestinama dienos riba: dienpinigiai laikomi apmokestinamais.','No verified tax-free daily limit for Other country: allowances are treated as taxable.'):null,
+      c.base?(c.cfg.taxMode==='annualAverage'?tr('Metinis vidurkis: 12 vienodų mėnesių, 20/25/32 % GPM ir VSD lubos. Tai ne faktinio mėnesio algalapis.','Annual average: 12 identical months, progressive tax and VSD cap. This is not an actual monthly payslip.'):tr('Mėnesio modelis: GPM 20 %. Metų pradžios draudžiamosios pajamos ir įmokų grindų bazė yra įvedamos prielaidos.','Monthly model: 20% income tax. Prior insured income and minimum contribution base are entered assumptions.')):tr('Darbdavio išlaidų procentas yra planavimo prielaida.','The employer cost percentage is a planning assumption.')
     ].filter(Boolean).map(x=>'<li>'+x+'</li>').join('')+'</ul>';
   }
 
@@ -443,7 +385,7 @@
   if(!document.querySelector('link[data-euroteams-audit-css]')){
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = 'final-audit.css?v=20261015-qa4';
+    link.href = 'final-audit.css?v=20261015-tax1';
     link.dataset.euroteamsAuditCss = '1';
     document.head.appendChild(link);
   }

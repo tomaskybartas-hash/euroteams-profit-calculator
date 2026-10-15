@@ -1,10 +1,10 @@
 (() => {
-  const files = ['app-core.js','full-language.js','payroll-controls.js','canonical-results.js'];
+  const files = ['safe-storage.js','app-core.js','full-language.js','payroll-controls.js','tax-rules-2026.js','canonical-results.js'];
   function next(){
     const src = files.shift();
     if(!src){ window.renderEuroteamsCore(); return; }
     const script = document.createElement('script');
-    script.src = src + '?v=20261015-qa4';
+    script.src = src + '?v=20261015-tax1';
     script.onload = next;
     script.onerror = () => { document.getElementById('savedMsg').textContent = 'Nepavyko įkelti skaičiuoklės / Calculator could not load'; };
     document.head.appendChild(script);

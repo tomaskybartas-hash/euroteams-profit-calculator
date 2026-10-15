@@ -6,7 +6,7 @@ function boot(saved){
  const d=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://calculator.test/',runScripts:'outside-only'}),w=d.window;
  w.structuredClone=structuredClone;
  if(saved)for(const [k,v] of Object.entries(saved))w.localStorage.setItem(k,v);
- for(const f of ['app-core.js','full-language.js','payroll-controls.js','canonical-results.js'])w.eval(fs.readFileSync(path.join(root,f),'utf8'));
+ for(const f of ['safe-storage.js','app-core.js','full-language.js','payroll-controls.js','tax-rules-2026.js','canonical-results.js'])w.eval(fs.readFileSync(path.join(root,f),'utf8'));
  w.renderEuroteamsCore();return w;
 }
 let w=boot();let count=0;
@@ -49,4 +49,4 @@ let saved={};for(let i=0;i<w.localStorage.length;i++){let k=w.localStorage.key(i
 ok(el('nameInput').value==='Saved project'&&near(last().workerTotal,old)&&last().cfg.days===12,'Reload restores inputs and payroll settings');
 ok(near(w.__euroteamsCanonicalLast.allCost,w.__euroteamsCanonicalLast.allRevenue-w.__euroteamsCanonicalLast.allProfit),'All-scenario totals balance');
 for(const row of el('resultTableBody').rows)ok(!/NaN|Infinity|undefined|null/.test(row.textContent),'Finite table row');
-console.log(`${count} assertions passed`);
+w.close();console.log(`${count} assertions passed`);
