@@ -31,6 +31,7 @@ ok(el('a1EnabledLabel').textContent==='Calculate with A1 posting','A1 translatio
 ok(el('pension2').options[0].textContent==='NO','Options translated');
 ok(!/val\.|mėn\./.test(w.document.querySelector('.scenario-meta').textContent),'English units translated');
 change('postingCountry','DE');ok(el('postingRate').value==='62','Country updates rate');input('postingDays',20);ok(near(last().post.totalPerDiem,1240),'Days recalculate allowance');
+input('postingDays',35);ok(last().cfg.days===31,'Calendar days normalized to maximum 31');input('shortDays',8);ok(last().cfg.shortDays===2,'Short days capped at two');input('postingDays',1);ok(last().cfg.shortDays===1,'Short-day count cannot exceed calendar days');input('postingDays',20);input('shortDays',0);
 input('localTransport2026',100);input('workwearTools2026',50);ok(near(last().projectExtras,150),'Extra costs included');
 el('tableWorkers').focus();input('tableWorkers',2);ok(w.document.activeElement.id==='tableWorkers','Table editing retains focus');ok(last().workers===2,'Result table worker count recalculates immediately');input('workers',1);
 const first=last().workerTotal;el('addBtn').click();ok(!last().cfg.a1,'New scenario does not inherit A1');input('nameInput','QA independent');input('clientRate',40);change('a1Enabled',true);input('postingRate',69);const second=last().workerTotal;

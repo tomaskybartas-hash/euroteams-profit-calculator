@@ -385,7 +385,7 @@
   if(!document.querySelector('link[data-euroteams-audit-css]')){
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = 'final-audit.css?v=20261015-tax1';
+    link.href = 'final-audit.css?v=20261015-tax2';
     link.dataset.euroteamsAuditCss = '1';
     document.head.appendChild(link);
   }

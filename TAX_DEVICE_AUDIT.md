@@ -47,25 +47,29 @@ Sutikrintos su Vyriausybės nutarimo Nr. 526 normų sąrašu. Sąrašo pakeitima
 ## Automatiniai bandymai
 
 - 189 mokestinių patikrinimų: skaitiniai etalonai, NPD, rezidencija, įmokų grindys, progresinis GPM, VSD/PSD, lubos, sutartinio atlygio rūšis, trumpų dienų ir ribų logika, NETO/BRUTO inversija.
-- 61 programos ir DOM patikrinimas: pradiniai pavyzdžiai, A1 įtraukimas/pridėjimas, scenarijų nepriklausomumas, šalinimas, vertimas, redagavimas ir perkrovimas.
+- 64 programos ir DOM patikrinimas: pradiniai pavyzdžiai, A1 įtraukimas/pridėjimas, scenarijų nepriklausomumas, šalinimas, vertimas, redagavimas ir perkrovimas.
 - 10 saugojimo ir apimties patikrinimų: 500 scenarijų, kito skirtuko įvykis, structuredClone atsarginis variantas, pilna saugykla, atkūrimas po saugojimo klaidos.
-- 500 scenarijų DOM bandymas apie 1,45 s šioje aplinkoje; tai nėra telefono spartos matavimas.
+- 500 scenarijų DOM bandymas apie 1,5–1,7 s šioje aplinkoje; tai nėra telefono spartos matavimas.
 
 ## Įrenginiai ir naršyklės
 
 | Aplinka | Būsena |
 |---|---|
 | Pateikta Chrome naršyklė | Gyvas funkcinis QA |
-| Mobile / tablet / laptop / desktop dydžiai | Naršyklės iframe pločio emuliacija; nėra tikras mobilus įrenginys |
+| Mobile / tablet / laptop / desktop dydžiai | Gyvai emuliuota: 320, 375, 390, 430, 768, 1024, 1280, 1600 px ir 844 × 390 landscape. Visais atvejais horizontalus turinys telpa. Tai iframe pločio emuliacija, ne tikras mobilus įrenginys. |
 | Fiziniai iPhone / iPad, iOS Safari | Neatlikta: nėra prieigos |
 | Fiziniai Android telefonai, Samsung Internet | Neatlikta: nėra prieigos |
 | Firefox, macOS Safari, tikras Microsoft Edge | Neatlikta: nėra prieigos |
 | Mobili klaviatūra, lietimas, ekrano skaitytuvai, OS šrifto didinimas | Neatlikta tikruose įrenginiuose |
 
+Gyvai patikrinti ir nauji laukai: metinis vidurkis (8 000 ir 15 000 EUR BRUTO etalonai), mažo atlyginimo grindys, NPD išjungimas nerezidentui, dvi trumpos dienos, visi 12 šalių pasirinkimai, A1 klaviatūra ir LT/EN vertimai. Įmokų ir GPM šaltinių neatitikimas dėl istorinio darbdavio lubų sakinio pažymėtas žemiau.
+
+Emuliatorius naudoja įprastą 15 px naršyklės slinkties juostą: 320 px rėmo vidinė turinio sritis yra 305 px. Puslapis vis tiek telpa be horizontalaus slinkimo.
+
 ## Kas negali būti patvirtinta be konkrečių duomenų
 
 - Kurioje valstybėje konkrečiu atveju privaloma mokėti GPM, socialinį draudimą ir priimančios šalies įmokas.
-- Darbuotojo rezidencija, specialus NPD, darbas kitur, faktinės metų pajamos, grindų išimtis ir A1 galiojimas.
+- Darbuotojo rezidencija, specialus NPD, nerezidento metinis NPD susigrąžinimas, darbas kitur, faktinės metų pajamos, grindų išimtis ir A1 galiojimas.
 - Priimančios valstybės minimalus atlygis, kolektyvinės sutartys, viršvalandžiai, atostoginiai, ligos išmokos ir kelių šalių kelionių paskirstymas.
 - Vartotojo sutartinis valandinis/mėnesinis atlygis ir teisė mažinti dienpinigius.
 - Metinio vidurkio režimas nėra individualios veiklos, kapitalo pajamų, užsienio mokesčio kredito ar metinės deklaracijos skaičiuoklė.

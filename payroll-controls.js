@@ -25,13 +25,13 @@
     $('rateHint').insertAdjacentElement('beforebegin',postingExtra);
     for(const [id,key] of [['taxMode','taxMode'],['wageBasis','wageBasis']])$(id).addEventListener('change',e=>save({[key]:e.target.value}));
     $('taxResident').addEventListener('change',e=>save({taxResident:e.target.value==='yes'}));
-    for(const id of ['priorSocialIncome','otherAnnualIncome','floorBase','contractWage','shortDays','customCountryLimit'])$(id).addEventListener('input',e=>{const value=Number(e.target.value);save({[id]:Number.isFinite(value)?Math.max(0,value):0})});
+    for(const id of ['priorSocialIncome','otherAnnualIncome','floorBase','contractWage','shortDays','customCountryLimit'])$(id).addEventListener('input',e=>{const value=Number(e.target.value);save({[id]:id==='shortDays'?Math.min(2,Math.trunc(Math.max(0,value||0)),Math.trunc(config().days||0)):Number.isFinite(value)?Math.max(0,value):0})});
 
     Object.keys(countries).forEach(code=>{const opt=document.createElement('option');opt.value=code;$('postingCountry').appendChild(opt)});
     [['a1Enabled','a1'],['includePerDiemInNet','includePerDiemInNet']].forEach(([id,key])=>$(id).addEventListener('change',e=>save({[key]:e.target.checked})));
     [['pension2','pension2'],['applyNpd','applyNpd']].forEach(([id,key])=>$(id).addEventListener('change',e=>save({[key]:e.target.value==='yes'})));
     [['employerRate2026','employerRate'],['postingDays','days'],['postingRate','perDiemRate'],['localTransport2026','localTransport'],['workwearTools2026','workwearTools']].forEach(([id,key])=>{
-      $(id).addEventListener('input',e=>{const v=Number(e.target.value);save({[key]:Number.isFinite(v)?Math.max(0,v):0})});
+      $(id).addEventListener('input',e=>{const v=Number(e.target.value);let normalized=Number.isFinite(v)?Math.max(0,v):0;if(key==='days')normalized=Math.min(31,Math.trunc(normalized));save(key==='days'?{days:normalized,shortDays:Math.min(config().shortDays||0,normalized)}:{[key]:normalized})});
       $(id).addEventListener('blur',e=>{if(e.target.value!=='')e.target.value=String(config()[key])});
     });
     $('postingDays').step='1';$('postingDays').max='31';$('shortDays').max='2';
@@ -79,10 +79,13 @@
     label('netRate').textContent=c.a1&&c.includePerDiemInNet?t('Bendra NETO išmoka / val. (su dienpinigiais)','Total net payout / hour (including allowance)'):t('Darbuotojo NETO atlyginimas / val.','Employee net salary / hour');
     label('monthlyPay').textContent=c.a1&&c.includePerDiemInNet?t('Bendra NETO išmoka / mėn. (su dienpinigiais)','Total net payout / month (including allowance)'):t('Darbuotojo NETO atlyginimas / mėn.','Employee net salary / month');
     label('monthlyEmployer').textContent=t('DU savikaina įmonei / mėn.','Total payroll cost / month');
+    if(c.taxMode==='annualAverage'&&c.a1)label('netRate').textContent=t('Metinis NETO išmokos vidurkis / val.','Annual-average net payout / hour');
+    if(c.taxMode==='annualAverage'){label('monthlyPay').textContent=c.a1&&c.includePerDiemInNet?t('Metinis NETO išmokos vidurkis / mėn. (su dienpinigiais)','Annual-average net payout / month (including allowance)'):t('Metinis NETO atlyginimo vidurkis / mėn.','Annual-average net salary / month');}
+    document.querySelector('.badge').textContent=payroll&&c.taxMode==='annualAverage'?t('Metinis vidurkis','Annual average'):t('Numatomas pelnas','Projected profit');
     $('uplift').closest('.field').hidden=!!c.a1;$('upliftHelp').hidden=!!c.a1;
     $('modeMonthly').textContent=t('NETO → BRUTO / mėnesio DU','Net to gross / monthly payroll');
     $('a1Enabled').checked=!!c.a1;$('includePerDiemInNet').checked=!!c.includePerDiemInNet;
-    $('pension2').value=c.pension2?'yes':'no';$('applyNpd').value=c.applyNpd?'yes':'no';$('postingCountry').value=c.country;
+    $('pension2').value=c.pension2?'yes':'no';$('applyNpd').value=c.taxResident&&c.applyNpd?'yes':'no';$('postingCountry').value=c.country;
     [...$('postingCountry').options].forEach(o=>o.textContent=countries[o.value][en()?1:0]);
     [['employerRate2026','employerRate'],['postingDays','days'],['postingRate','perDiemRate'],['localTransport2026','localTransport'],['workwearTools2026','workwearTools']].forEach(([id,key])=>{if(document.activeElement!==$(id))$(id).value=c[key]});
     // Preserve user names and notes verbatim during translation.
