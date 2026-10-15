@@ -22,10 +22,10 @@
   const tr = (lt,en) => isEn() ? en : lt;
   const money = value => new Intl.NumberFormat(isEn() ? 'en-GB' : 'lt-LT', {
     style:'currency', currency:'EUR', minimumFractionDigits:2, maximumFractionDigits:2
-  }).format(Number(value) || 0);
+  }).format(Number(Number(value).toPrecision(14)) || 0);
   const pct = value => new Intl.NumberFormat(isEn() ? 'en-GB' : 'lt-LT', {
     minimumFractionDigits:2, maximumFractionDigits:2
-  }).format(Number(value) || 0) + ' %';
+  }).format(Number(Number(value).toPrecision(14)) || 0) + ' %';
 
   function mainState(){
     try { return JSON.parse(localStorage.getItem(MAIN_KEY) || 'null'); }

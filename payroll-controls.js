@@ -66,7 +66,7 @@
     const plural=w%100>=11&&w%100<=19?'darbuotojų':w%10===1?'darbuotojas':w%10>=2&&w%10<=9?'darbuotojai':'darbuotojų';
     $('teamTitle').textContent=t(`${w} ${plural} · mėnesio sumos`,`${w} ${w===1?'worker':'workers'} · monthly totals`);
     $('teamHours').textContent=t(`${w} ${plural} × ${s.hours} val. = ${w*s.hours} klientui pateikiamų valandų / mėn.`,`${w} × ${s.hours} h = ${w*s.hours} billed hours / month`);
-    document.querySelectorAll('.scenario-meta').forEach((el,i)=>{const x=context().state.scenarios[i];el.textContent=`${x.clientRate} EUR / ${t('val.','h')} · ${x.hours} ${t('val.','h')} · ${x.workers} ${t('darbuotojų','workers')}`});
+    document.querySelectorAll('.scenario-meta').forEach((el,i)=>{const x=context().state.scenarios[i];el.textContent=`${x.clientRate} EUR / ${t('val.','h')} · ${x.hours} ${t('val.','h')} · ${x.workers} ${t(x.workers===1?'darbuotojas':(x.workers%100>=11&&x.workers%100<=19)||x.workers%10===0?'darbuotojų':x.workers%10===1?'darbuotojas':'darbuotojai',x.workers===1?'worker':'workers')}`});
   }
   window.renderPayrollControls=render;
 })();
