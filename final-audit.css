@@ -7,3 +7,5 @@
 @media(max-width:650px){.tax-advanced{padding:12px}.tax-advanced .two>.field>label{min-height:0}}
 /* Tax assumptions carry longer labels: keep them on a readable single column. */
 .tax-advanced .two{grid-template-columns:1fr;gap:0}.tax-advanced .two>.field>label{min-height:0}.tax-advanced .two>.field{grid-template-rows:auto 48px auto}
+
+.saved-example-controls{margin-top:12px}.saved-example-controls label{display:block;margin-bottom:6px}.saved-example-actions{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}.saved-example-actions .btn{white-space:normal}.saved-example-controls input{width:100%;min-width:0}.saved-example-controls [role="status"]{font-size:13px;margin-top:6px}
