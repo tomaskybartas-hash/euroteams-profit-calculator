@@ -85,7 +85,9 @@
     const totalPerDiem = n(cfg.perDiemRate) * n(cfg.days);
     const hourlyGross = hours ? base.gross / hours : 0;
     const fullyExempt = base.gross >= 1902.45 || hourlyGross >= 11.6325;
-    const exemptPerDiem = Math.min(totalPerDiem, fullyExempt ? totalPerDiem : base.gross * 0.50);
+    const countryRate=window.EuroteamsDailyRates?.[cfg.country||'NL']?.[2] ?? 0;
+    const countryLimit=n(countryRate)*n(cfg.days);
+    const exemptPerDiem = Math.min(totalPerDiem, countryLimit, fullyExempt ? totalPerDiem : base.gross * 0.50);
     const taxablePerDiem = Math.max(0, totalPerDiem - exemptPerDiem);
     const combined = payrollFromGross(base.gross + taxablePerDiem, cfg);
     const extraSodra = Math.max(0, combined.sodra - base.sodra);
@@ -290,6 +292,7 @@
   }
   function updateProfitRows(c){
     const tbody=$('resultTableBody');if(!tbody)return;
+    const focusedWorker=document.activeElement===$('tableWorkers')?$('tableWorkers'):null;
     const row=(label,value)=>`<tr><th scope="row">${label}</th><td>${money(value)}</td></tr>`;
     tbody.innerHTML=`<tr><th scope="row">${tr('Darbuotojų skaičius','Number of workers')}</th><td><input id="tableWorkers" aria-label="${tr('Darbuotojų skaičius','Number of workers')}" type="number" min="1" step="1" value="${c.workers}" style="max-width:120px"></td></tr>`+
       [[tr('Kliento pajamos / darbuotojui','Client revenue per worker'),c.revenue],...detailRows(c),
@@ -301,7 +304,8 @@
       [tr('Komandos pajamos','Team revenue'),c.teamRevenue],[tr('Komandos savikaina','Team cost'),c.teamCost],
       [tr('Komandos pelnas','Team profit'),c.teamProfit]].map(([label,value])=>row(label,value)).join('')+
       `<tr><th scope="row">${tr('Pelno marža','Profit margin')}</th><td>${pct(c.margin)}</td></tr>`;
-    $('tableWorkers').onchange=e=>{ $('workers').value=e.target.value;$('workers').dispatchEvent(new Event('input',{bubbles:true})); };
+    if(focusedWorker){$('tableWorkers').replaceWith(focusedWorker);focusedWorker.focus();}
+    $('tableWorkers').oninput=e=>{ $('workers').value=e.target.value;$('workers').dispatchEvent(new Event('input',{bubbles:true})); };
     for(const row of tbody.rows){const label=row.cells[0].textContent;if(/Pelnas|pelnas|profit|margin|marža/i.test(label)&&!/Tarifas|rate/.test(label))tone(row.cells[1],c.profit);}
     const detail=$('payrollBreakdown');if(detail)detail.innerHTML=detailRows(c).map(([label,value])=>`<div class="metric"><span>${label}</span><strong>${money(value)}</strong></div>`).join('');
     if(c.base&&$('monthlyEmployer'))$('monthlyEmployer').value=c.base.payrollCost.toFixed(2);

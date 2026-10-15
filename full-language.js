@@ -127,14 +127,6 @@
     if (span) span.textContent = lang === 'en' ? '● Password protected' : '● Apsaugota slaptažodžiu';
   }
 
-  function translateScenarioHeader(lang) {
-    const header = document.querySelector('.scen-head > div:first-child');
-    if (!header) return;
-    const m = header.textContent.match(/(\d+)/);
-    const num = m ? m[1] : '1';
-    header.textContent = `${lang === 'en' ? 'Project' : 'Projektas'} ${num}`;
-  }
-
   function translateLogin(lang) {
     const title = document.getElementById('loginTitle');
     const text = document.getElementById('loginText');

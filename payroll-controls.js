@@ -5,6 +5,7 @@
   const en=()=>$('enBtn').classList.contains('active'), t=(lt,eng)=>en()?eng:lt;
   const defaults={pension2:false,applyNpd:false,employerRate:1.77,localTransport:0,workwearTools:0,a1:false,includePerDiemInNet:true,country:'NL',days:30,perDiemRate:64};
   const countries={NL:['Nyderlandai','Netherlands',64],DE:['Vokietija','Germany',62],FR:['Prancūzija','France',69],FI:['Suomija','Finland',69],SE:['Švedija','Sweden',70],DK:['Danija','Denmark',80],NO:['Norvegija','Norway',70],EE:['Estija','Estonia',47],ES:['Ispanija','Spain',58],PT:['Portugalija','Portugal',56],BE:['Belgija','Belgium',61],AT:['Austrija','Austria',69],OTHER:['Kita','Other',0]};
+  window.EuroteamsDailyRates=countries;
   function read(key,fallback){try{return JSON.parse(localStorage.getItem(key))||fallback}catch{return fallback}}
   function context(){const state=read(MAIN,{selected:0,scenarios:[]});return {state,index:state.selected,scenario:state.scenarios[state.selected]||{}}}
   function config(){return {...defaults,...read(KEY,{})[context().index]}}
@@ -26,7 +27,7 @@
     });
     $('postingDays').step='1';
     $('postingCountry').addEventListener('change',e=>save({country:e.target.value,perDiemRate:countries[e.target.value][2]}));
-    document.querySelectorAll('input[type=number]').forEach(el=>{el.min=['workers','workWeeks'].includes(el.id)?'1':'0';if(!['workers','postingDays','workWeeks','homeWeeks'].includes(el.id))el.step='0.01';});
+    document.querySelectorAll('input[type=number]').forEach(el=>{el.min=['workers','workWeeks'].includes(el.id)?'1':'0';if(!['workers','workWeeks','homeWeeks'].includes(el.id))el.step='0.01';el.addEventListener('blur',()=>{const min=Number(el.min)||0;if((el.value!==''&&Number(el.value)<min)||(el.value===''&&min>0)){el.value=String(min);el.dispatchEvent(new Event('input',{bubbles:true}));}});});
     document.querySelectorAll('.field').forEach(el=>{const input=el.querySelector('input,select,textarea'),label=el.querySelector('label');if(input&&label&&!label.htmlFor)label.htmlFor=input.id});
   }
   function render(){

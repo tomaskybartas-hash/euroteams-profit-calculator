@@ -23,6 +23,7 @@ ok(near(last().base.gross,3801.65289256),'2300 net → gross');ok(near(last().wo
 change('pension2','yes');ok(near(last().base.gross,4000)&&near(last().workerTotal,4070.80),'Pension reference example');
 change('pension2','no');change('a1Enabled',true);change('includePerDiemInNet',false);
 ok(near(last().post.paidToEmployee,4220)&&near(last().workerTotal,5788.94214876),'Allowance added to net reference example');
+input('postingRate',80);ok(near(last().post.exemptPerDiem,1920)&&near(last().post.taxablePerDiem,480),'Country maximum caps tax-free allowance');input('postingRate',64);
 change('includePerDiemInNet',true);ok(near(last().post.paidToEmployee,2300),'Allowance INCLUDED in net target');
 ok(near(Number(el('monthlyEmployer').value),last().base.payrollCost),'Read-only payroll cost agrees');
 const before=last().workerTotal;el('enBtn').click();ok(near(last().workerTotal,before),'Language switch preserves amounts');
@@ -31,6 +32,7 @@ ok(el('pension2').options[0].textContent==='NO','Options translated');
 ok(!/val\.|mėn\./.test(w.document.querySelector('.scenario-meta').textContent),'English units translated');
 change('postingCountry','DE');ok(el('postingRate').value==='62','Country updates rate');input('postingDays',20);ok(near(last().post.totalPerDiem,1240),'Days recalculate allowance');
 input('localTransport2026',100);input('workwearTools2026',50);ok(near(last().projectExtras,150),'Extra costs included');
+el('tableWorkers').focus();input('tableWorkers',2);ok(w.document.activeElement.id==='tableWorkers','Table editing retains focus');ok(last().workers===2,'Result table worker count recalculates immediately');input('workers',1);
 const first=last().workerTotal;el('addBtn').click();ok(!last().cfg.a1,'New scenario does not inherit A1');input('nameInput','QA independent');input('clientRate',40);change('a1Enabled',true);input('postingRate',69);const second=last().workerTotal;
 w.document.querySelectorAll('.scenario-tab')[0].click();ok(near(last().workerTotal,first)&&last().cfg.country==='DE','First scenario settings preserved');
 el('deleteBtn').click();ok(el('nameInput').value==='QA independent'&&near(last().workerTotal,second)&&last().cfg.perDiemRate===69,'Deletion reindexes payroll settings');
