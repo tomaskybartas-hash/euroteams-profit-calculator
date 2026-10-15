@@ -17,7 +17,7 @@
   });
 
   const $ = id => document.getElementById(id);
-  const n = value => Math.max(0, Number(value) || 0);
+  const n = value => Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0;
   const isEn = () => $('enBtn')?.classList.contains('active');
   const tr = (lt,en) => isEn() ? en : lt;
   const money = value => new Intl.NumberFormat(isEn() ? 'en-GB' : 'lt-LT', {
@@ -190,7 +190,7 @@
       legacyEmployerCost = salary * (1 + n(s.uplift) / 100);
       payrollCostShown = legacyEmployerCost;
       employerContributionShown = Math.max(0,legacyEmployerCost - salary);
-      workerTotal = legacyEmployerCost + housing + travelCost + other;
+      workerTotal = legacyEmployerCost + housing + travelCost + other + localTransport + workwearTools;
       employeeShown = salary;
     }
 
@@ -248,11 +248,11 @@
     setText(metricLabel('salaryValue'),c.cfg.a1 && c.cfg.includePerDiemInNet
       ? tr('Bendra darbuotojui išmokama suma','Total Paid to Employee')
       : tr('Darbuotojo NETO atlyginimas','Employee Net Salary'));
-    setText(metricLabel('employerValue'),c.cfg.a1
+    setText(metricLabel('employerValue'),c.base
       ? tr('DU savikaina įmonei','Employment Cost to Company')
       : tr('Darbuotojo savikaina prieš logistiką','Employee Cost Before Logistics'));
     setText(metricLabel('logisticsValue'),tr('Logistikos išlaidos','Logistics Costs'));
-    setText(metricLabel('extraEmployerValue'),c.cfg.a1
+    setText(metricLabel('extraEmployerValue'),c.base
       ? tr('Darbdavio socialinės įmokos','Employer Social Security Contributions')
       : tr('Papildomos darbdavio išlaidos','Additional Employer Costs'));
     setText(metricLabel('allocatedTravelValue'),tr('Kelionės / mėn.','Travel / Month'));
@@ -266,26 +266,64 @@
     if(teamProfitLabel) setText(teamProfitLabel,tr('Euroteams Group įmonės pelnas','Euroteams Group Company Profit'));
   }
 
+  function detailRows(c){
+    const b=c.base,p=c.post, rows=[];
+    if(b){
+      rows.push([tr('Darbuotojo NETO atlyginimas (be dienpinigių)','Employee net salary (excluding allowance)'),b.net],
+        [tr('Bruto atlyginimas','Gross salary'),b.gross],
+        [tr('Darbuotojo socialinės įmokos nuo DU','Employee social security on salary'),b.sodra],
+        [tr('GPM nuo DU','Income tax on salary'),b.gpm],
+        [tr('Pensijų kaupimas nuo DU','Pension contribution on salary'),b.pension],
+        [tr('Darbdavio socialinės įmokos nuo DU','Employer social security on salary'),b.employerTaxes],
+        [tr('DU savikaina įmonei','Total payroll cost'),b.payrollCost]);
+      if(c.cfg.a1) rows.push(
+        [tr('Bendra dienpinigių suma','Total daily allowance'),p.totalPerDiem],
+        [tr('Neapmokestinami dienpinigiai','Tax-free daily allowance'),p.exemptPerDiem],
+        [tr('Apmokestinami dienpinigiai (bruto)','Taxable daily allowance (gross)'),p.taxablePerDiem],
+        [tr('Darbuotojo mokesčiai nuo dienpinigių','Employee taxes on daily allowance'),p.taxablePerDiem-p.taxablePerDiemNet],
+        [tr('Darbdavio įmokos nuo dienpinigių','Employer contributions on daily allowance'),p.taxableEmployerTaxes],
+        [tr('Apmokestintų dienpinigių NETO dalis','Taxable daily allowance after tax'),p.taxablePerDiemNet],
+        [tr('Bendra darbuotojui išmokama suma','Total paid to employee'),p.paidToEmployee],
+        [tr('DU ir dienpinigių savikaina','Payroll and daily allowance cost'),p.payrollPostingCost]);
+    }else rows.push([tr('Darbuotojo NETO atlyginimas','Employee net salary'),c.employeeShown],[tr('Darbuotojo savikaina prieš logistiką','Employee cost before logistics'),c.payrollCostShown]);
+    return rows;
+  }
   function updateProfitRows(c){
-    const tbody = $('resultTableBody');
-    if(!tbody) return;
-    tbody.querySelectorAll('tr').forEach(row => {
-      const th = row.querySelector('th');
-      const td = row.querySelector('td');
-      if(!th || !td) return;
-      const label = (th.textContent || '').trim().toLowerCase();
-      if(label.includes('pelnas nuo vieno darbuotojo') || label.includes('profit per worker')){
-        setText(td,money(c.profit)); tone(td,c.profit);
-      } else if(label === 'pelno marža' || label === 'profit margin' || label === 'marža' || label === 'margin'){
-        setText(td,pct(c.margin)); tone(td,c.margin);
-      } else if(label.includes('euroteams group įmonės pelnas') || label.includes('euroteams group company profit') || label === 'komandos pelnas' || label === 'team profit'){
-        setText(td,money(c.teamProfit)); tone(td,c.teamProfit);
-      } else if(label.includes('bendra darbuotojo savikaina') || label.includes('total employee cost') || label.includes('visos išlaidos / darbuotojui') || label.includes('total costs / worker')){
-        setText(td,money(c.workerTotal));
-      } else if(label.includes('pajamos iš kliento / nuo darbuotojo') || label.includes('client revenue / worker')){
-        setText(td,money(c.revenue));
-      }
-    });
+    const tbody=$('resultTableBody');if(!tbody)return;
+    const row=(label,value)=>`<tr><th scope="row">${label}</th><td>${money(value)}</td></tr>`;
+    tbody.innerHTML=`<tr><th scope="row">${tr('Darbuotojų skaičius','Number of workers')}</th><td><input id="tableWorkers" aria-label="${tr('Darbuotojų skaičius','Number of workers')}" type="number" min="1" step="1" value="${c.workers}" style="max-width:120px"></td></tr>`+
+      [[tr('Kliento pajamos / darbuotojui','Client revenue per worker'),c.revenue],...detailRows(c),
+      [tr('Apgyvendinimas','Accommodation'),c.housing],[tr('Kelionės','Travel'),c.travelCost],
+      [tr('Vietinis transportas','Local transport'),c.localTransport],[tr('Darbo rūbai / įrankiai','Workwear / tools'),c.workwearTools],
+      [tr('Kitos išlaidos','Other costs'),c.other],[tr('Bendra darbuotojo savikaina','Total employee cost'),c.workerTotal],
+      [tr('Pelnas nuo vieno darbuotojo','Profit per worker'),c.profit],[tr('Pelnas už valandą','Profit per hour'),c.profitHour],
+      [tr('Tarifas be pelno ir nuostolio','Break-even client rate'),c.breakEven],
+      [tr('Komandos pajamos','Team revenue'),c.teamRevenue],[tr('Komandos savikaina','Team cost'),c.teamCost],
+      [tr('Komandos pelnas','Team profit'),c.teamProfit]].map(([label,value])=>row(label,value)).join('')+
+      `<tr><th scope="row">${tr('Pelno marža','Profit margin')}</th><td>${pct(c.margin)}</td></tr>`;
+    $('tableWorkers').onchange=e=>{ $('workers').value=e.target.value;$('workers').dispatchEvent(new Event('input',{bubbles:true})); };
+    for(const row of tbody.rows){const label=row.cells[0].textContent;if(/Pelnas|pelnas|profit|margin|marža/i.test(label)&&!/Tarifas|rate/.test(label))tone(row.cells[1],c.profit);}
+    const detail=$('payrollBreakdown');if(detail)detail.innerHTML=detailRows(c).map(([label,value])=>`<div class="metric"><span>${label}</span><strong>${money(value)}</strong></div>`).join('');
+    if(c.base&&$('monthlyEmployer'))$('monthlyEmployer').value=c.base.payrollCost.toFixed(2);
+    const status=$('a1Status');
+    if(status){
+      const target=(mainState().scenarios[mainState().selected].costMode==='monthly'?n($('monthlyPay').value):n($('netRate').value)*c.hours);
+      const difference=c.cfg.a1&&c.cfg.includePerDiemInNet?c.post.paidToEmployee-target:0;
+      status.textContent=Math.abs(difference)>.01
+        ? tr('Įvestos NETO sumos su šiais dienpinigiais tiksliai pasiekti negalima. Apskaičiuota išmoka: ','The entered net payout cannot be reached exactly with these allowances. Calculated payout: ')+money(c.post.paidToEmployee)
+        : c.cfg.a1?tr('Neapmokestinami dienpinigiai: ','Tax-free daily allowance: ')+money(c.post.exemptPerDiem)+tr(' · Apmokestinami: ',' · Taxable: ')+money(c.post.taxablePerDiem):'';
+      status.className=Math.abs(difference)>.01?'calculation-warning':'help';
+    }
+    setText($('employerHelp'),c.base?tr('Bruto DU + darbdavio įmokos nuo DU; dienpinigiai atskirai.','Gross salary + employer contributions on salary; daily allowance is separate.'):tr('NETO atlyginimas + įvestas papildomų išlaidų procentas.','Net salary + entered additional cost percentage.'));
+    const salaryHelp=$('salaryValue')?.closest('.metric')?.querySelector('small');
+    setText(salaryHelp,c.cfg.a1&&c.cfg.includePerDiemInNet?tr('NETO DU + neapmokestinami ir apmokestinti dienpinigiai.','Net salary + tax-free and after-tax daily allowance.'):tr('Darbuotojo NETO atlyginimas be dienpinigių.','Employee net salary excluding daily allowance.'));
+    const warnings=$('scenarioWarning');
+    if(warnings)warnings.innerHTML='<ul>'+[
+      !c.housing?tr('Apgyvendinimo išlaidos neįtrauktos arba jas apmoka klientas.','Accommodation costs are excluded or paid by the client.'):null,
+      !c.travelCost?tr('Kelionės išlaidos neįtrauktos arba jas apmoka klientas.','Travel costs are excluded or paid by the client.'):null,
+      tr('Pelnas prieš pelno mokestį ir neįvestas išlaidas.','Profit before corporate tax and costs not entered.'),
+      c.base?tr('Taikomas Lietuvos mėnesio DU modelis: GPM 20 %. Metinis GPM, įmokų lubos ir priimančios šalies atlygio reikalavimai tikrinami atskirai.','Uses the Lithuanian monthly payroll model at 20% income tax. Annual tax, contribution caps and host-country pay requirements need separate verification.'):tr('Darbdavio išlaidų procentas yra planavimo prielaida.','The employer cost percentage is a planning assumption.')
+    ].filter(Boolean).map(x=>'<li>'+x+'</li>').join('')+'</ul>';
   }
 
   function applyCanonicalResults(){
@@ -341,24 +379,7 @@
     window.__euroteamsCanonicalLast = {active,c,allRevenue,allCost,allProfit,at:new Date().toISOString()};
   }
 
-  let scheduled = false;
-  function scheduleCanonical(){
-    if(scheduled) return;
-    scheduled = true;
-    requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => {
-      scheduled = false;
-      applyCanonicalResults();
-    },0)));
-  }
-
-  document.addEventListener('input',scheduleCanonical,false);
-  document.addEventListener('change',scheduleCanonical,false);
-  document.addEventListener('click',e => {
-    if(e.target.closest('#scenarioTabs,#modeHourly,#modeMonthly,#addBtn,#deleteBtn,#resetBtn,#ltBtn,#enBtn,#travelMonthlyBtn,#travelRotationBtn')) scheduleCanonical();
-  },false);
-  window.addEventListener('storage',scheduleCanonical);
-  window.addEventListener('euroteams:recalculate',scheduleCanonical);
-
+  window.applyEuroteamsResults=applyCanonicalResults;
   function approx(a,b,t=0.02){ return Math.abs(a-b) <= t; }
   function regressionTests(){
     const cfgBase = {...DEFAULTS,pension2:false,applyNpd:false,employerRate:1.77};
@@ -418,17 +439,11 @@
   if(!document.querySelector('link[data-euroteams-audit-css]')){
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = 'final-audit.css?v=20261015-1';
+    link.href = 'final-audit.css?v=20261015-qa2';
     link.dataset.euroteamsAuditCss = '1';
     document.head.appendChild(link);
   }
 
-  window.addEventListener('load',() => setTimeout(() => {
-    regressionTests();
-    applyCanonicalResults();
-  },350));
-  setTimeout(() => {
-    regressionTests();
-    applyCanonicalResults();
-  },550);
+  regressionTests();
+  applyCanonicalResults();
 })();

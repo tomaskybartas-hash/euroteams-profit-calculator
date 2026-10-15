@@ -1,26 +1,13 @@
 (() => {
-  const load = (src, done) => {
-    const s = document.createElement('script');
-    s.src = src;
-    if (done) s.onload = done;
-    document.head.appendChild(s);
-  };
-
-  load('app-core.js?v=20261014-1', () => {
-    load('name-save-fix.js?v=20261014-1', () => {
-      load('project-counter-safe.js?v=20261014-3', () => {
-        load('full-language.js?v=20261014-3', () => {
-          load('functionality-fix.js?v=20261014-1', () => {
-            load('terminology-patch.js?v=20261014-1', () => {
-              load('payroll-net-module-v4.js?v=20261014-3', () => {
-                load('hourly-a1-module.js?v=20261014-1', () => {
-                  load('canonical-results.js?v=20261015-1');
-                });
-              });
-            });
-          });
-        });
-      });
-    });
-  });
+  const files = ['app-core.js','full-language.js','payroll-controls.js','canonical-results.js'];
+  function next(){
+    const src = files.shift();
+    if(!src){ window.renderEuroteamsCore(); return; }
+    const script = document.createElement('script');
+    script.src = src + '?v=20261015-qa2';
+    script.onload = next;
+    script.onerror = () => { document.getElementById('savedMsg').textContent = 'Nepavyko įkelti skaičiuoklės / Calculator could not load'; };
+    document.head.appendChild(script);
+  }
+  next();
 })();

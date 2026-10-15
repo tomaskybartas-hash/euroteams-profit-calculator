@@ -4,7 +4,7 @@
     ['Prisijungti','Sign in'],
     ['Tik Euroteams komandai · prisijungimas galioja 24 val.','Euroteams team only · sign-in remains valid for 24 hours.'],
     ['VERSLO DARBO ERDVĖ','BUSINESS WORKSPACE'],
-    ['Maržos skaičiuoklė','Margin calculator'],
+    ['Maržos skaičiuoklė','Margin calculator'],['▣   Maržos skaičiuoklė','▣   Margin calculator'],
     ['Privati darbo erdvė','Private workspace'],
     ['Euroteams Group komandai','For the Euroteams Group team'],
     ['PROJEKTO VERTINIMAS / NYDERLANDAI','PROJECT EVALUATION / NETHERLANDS'],
@@ -12,7 +12,7 @@
     ['Apsaugota slaptažodžiu','Password protected'],
     ['ŽINOKITE SAVO SKAIČIUS','KNOW YOUR NUMBERS'],
     ['Kiekviena valanda. Kiekvienas euras.','Every hour. Every euro.'],
-    ['Įvertinti subrangos projekto pajamas, išlaidas ir pelną vienam darbuotojui bei visai komandai.','Evaluate subcontracting project revenue, costs and profit per worker and for the entire team.'],
+    ['Įvertinkite subrangos projekto pajamas, išlaidas ir pelną vienam darbuotojui bei visai komandai.','Evaluate subcontracting project revenue, costs and profit per worker and for the entire team.'],
     ['Planavimo skaičiavimas pagal įvestas prielaidas.','Planning calculation based on the assumptions entered.'],
     ['Darbdavio išlaidų procentai ir pasiūlymo sumos yra keičiami planavimo duomenys. Skaičiuoklė netikrina teisinių darbo užmokesčio reikalavimų.','Employer cost percentages and proposal amounts are editable planning inputs. The calculator does not verify legal wage requirements.'],
     ['Atkurti pavyzdžius','Restore examples'],
@@ -155,7 +155,7 @@
     translateNotice(lang);
     translateBreadcrumb(lang);
     translateProtected(lang);
-    translateScenarioHeader(lang);
+
     translateLogin(lang);
 
     const lt = document.getElementById('ltBtn');
@@ -168,25 +168,6 @@
     return document.getElementById('enBtn')?.classList.contains('active') ? 'en' : 'lt';
   }
 
-  document.addEventListener('click', e => {
-    if (e.target.closest('#enBtn') || e.target.closest('#loginEn')) {
-      setTimeout(() => applyLanguage('en'), 0);
-    }
-    if (e.target.closest('#ltBtn') || e.target.closest('#loginLt')) {
-      setTimeout(() => applyLanguage('lt'), 0);
-    }
-    if (e.target.closest('#addBtn') || e.target.closest('#deleteBtn') || e.target.closest('#resetBtn') || e.target.closest('#scenarioTabs')) {
-      setTimeout(() => applyLanguage(currentLang()), 0);
-    }
-  });
-
-  const obs = new MutationObserver(() => {
-    clearTimeout(window.__etLangTimer);
-    window.__etLangTimer = setTimeout(() => applyLanguage(currentLang()), 20);
-  });
-  const tabs = document.getElementById('scenarioTabs');
-  if (tabs) obs.observe(tabs, {childList:true, subtree:true});
-
-  window.addEventListener('load', () => applyLanguage(currentLang()));
-  setTimeout(() => applyLanguage(currentLang()), 50);
+  window.applyEuroteamsLanguage = applyLanguage;
+  applyLanguage(currentLang());
 })();
