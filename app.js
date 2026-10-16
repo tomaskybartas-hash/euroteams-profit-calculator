@@ -4,7 +4,7 @@
     const src = files.shift();
     if(!src){ window.renderEuroteamsCore(); return; }
     const script = document.createElement('script');
-    script.src = src + '?v=20261016-physicalqa1';
+    script.src = src + '?v=20261016-physicalqa2';
     script.onload = next;
     script.onerror = () => { document.getElementById('savedMsg').textContent = 'Nepavyko įkelti skaičiuoklės / Calculator could not load'; };
     document.head.appendChild(script);

@@ -390,7 +390,7 @@
   if(!document.querySelector('link[data-euroteams-audit-css]')){
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = 'final-audit.css?v=20261016-physicalqa1';
+    link.href = 'final-audit.css?v=20261016-physicalqa2';
     link.dataset.euroteamsAuditCss = '1';
     document.head.appendChild(link);
   }

@@ -60,4 +60,8 @@ ok(Number.isFinite(last().workerTotal),'Extreme allowance stays finite');
 el('exampleStatus').textContent='Pavyzdys ištrintas';el('enBtn').click();
 ok(el('exampleStatus').textContent==='','Language switch clears transient old-language status');
 
+el('logoutBtn').click();el('loginEn').click();
+ok(el('loginBtn').textContent==='Sign in','Login EN submit translated');
+ok(!/[ąčęėįšųūž]/i.test(el('login').textContent),'Login EN has no Lithuanian text');
+el('loginLt').click();ok(el('loginBtn').textContent==='Prisijungti','Login LT restored');
 console.log(`${count} assertions passed`);
