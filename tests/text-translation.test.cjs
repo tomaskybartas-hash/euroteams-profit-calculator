@@ -1,0 +1,26 @@
+const {JSDOM}=require(process.env.JSDOM_PATH||'jsdom');
+const fs=require('node:fs'),assert=require('node:assert/strict');
+(async()=>{
+ const d=new JSDOM(fs.readFileSync('index.html','utf8'),{url:'https://calculator.test',runScripts:'outside-only'}),w=d.window;
+ w.structuredClone=structuredClone;w.TextEncoder=TextEncoder;w.AbortController=AbortController;
+ let calls=[],reject=false;
+ w.fetch=async url=>{calls.push(new URL(url));if(reject)throw Error('offline');return {ok:true,json:async()=>({responseStatus:200,responseData:{translatedText:'English '+new URL(url).searchParams.get('q')}})}};
+ for(const f of ['safe-storage.js','app-core.js','full-language.js','payroll-controls.js','tax-rules-2026.js','canonical-results.js','text-translation.js'])w.eval(fs.readFileSync(f,'utf8'));
+ w.renderEuroteamsCore();const el=id=>w.document.getElementById(id);
+ const input=(id,v)=>{el(id).value=v;el(id).dispatchEvent(new w.Event('input',{bubbles:true}))};
+ input('nameInput','Bandomasis projektas');input('notes','Darbuotojai pradeda pirmadienį.');
+ el('enBtn').click();assert.equal(calls.length,0,'No text is sent before opt-in');
+ const profit=el('profitValue').textContent;el('enableTextTranslation').click();
+ await new Promise(r=>setTimeout(r,50));
+ assert.equal(el('nameInput').value,'English Bandomasis projektas');assert.ok(el('notes').value.startsWith('English '));
+ assert.equal(el('nameInput').readOnly,true);assert.equal(el('profitValue').textContent,profit);
+ assert.ok(calls.every(u=>u.hostname==='api.mymemory.translated.net'&&u.searchParams.get('langpair')==='lt|en'));
+ const original=JSON.parse(w.localStorage.getItem('euroteams-profit-calculator-v3')).scenarios[0];assert.equal(original.name,'Bandomasis projektas');assert.equal(original.notes,'Darbuotojai pradeda pirmadienį.');
+ const count=calls.length;el('ltBtn').click();assert.equal(el('nameInput').value,original.name);assert.equal(el('notes').readOnly,false);el('enBtn').click();await new Promise(r=>setTimeout(r,10));assert.equal(calls.length,count,'Cached translations reused');
+ el('editTranslationOriginal').click();assert.equal(el('nameInput').value,original.name);assert.equal(el('nameInput').readOnly,false);input('nameInput','Naujas pavadinimas');assert.equal(calls.length,count,'Typing original does not send partial text');el('editTranslationOriginal').click();await new Promise(r=>setTimeout(r,30));assert.equal(el('nameInput').value,'English Naujas pavadinimas');
+ el('addBtn').click();el('editTranslationOriginal').click();input('nameInput','Antras projektas');el('editTranslationOriginal').click();w.document.querySelectorAll('.scenario-tab')[0].click();await new Promise(r=>setTimeout(r,50));assert.equal(el('nameInput').value,'English Naujas pavadinimas','Late response cannot overwrite selected project');
+ el('editTranslationOriginal').click();reject=true;input('notes','Neveikiantis ryšys');el('editTranslationOriginal').click();await new Promise(r=>setTimeout(r,30));assert.match(el('textTranslationStatus').textContent,/unavailable/);assert.equal(el('notes').value,'Neveikiantis ryšys');
+ el('enableTextTranslation').click();assert.equal(el('nameInput').readOnly,false);assert.equal(el('nameInput').value,'Naujas pavadinimas');
+ const pieces=w.EuroteamsTextTranslation.chunks('ą'.repeat(600));assert.ok(pieces.every(x=>new TextEncoder().encode(x).length<=450));assert.equal(pieces.join(''),'ą'.repeat(600));
+ console.log('Translation opt-in, cache, originals, editing, failures, stale responses, UTF-8 limits and payroll invariance passed');d.window.close();
+})().catch(e=>{console.error(e);process.exit(1)});

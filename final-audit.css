@@ -9,3 +9,9 @@
 .tax-advanced .two{grid-template-columns:1fr;gap:0}.tax-advanced .two>.field>label{min-height:0}.tax-advanced .two>.field{grid-template-rows:auto 48px auto}
 
 .saved-example-controls{margin-top:12px}.saved-example-controls label{display:block;margin-bottom:6px}.saved-example-actions{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}.saved-example-actions .btn{white-space:normal}.saved-example-controls input{width:100%;min-width:0}.saved-example-controls [role="status"]{font-size:13px;margin-top:6px}
+
+.text-translation-panel{padding:16px;margin:0 0 20px;border:1px solid #d9dee3;border-radius:12px;background:#f7f9fb;overflow-wrap:anywhere}
+.text-translation-panel[hidden]{display:none}
+.text-translation-panel .saved-example-actions{flex-wrap:wrap;margin:12px 0}
+.text-translation-panel button{white-space:normal;min-height:44px}
+input[readonly],textarea[readonly]{background:#f4f6f8}
