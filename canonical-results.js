@@ -36,7 +36,11 @@
     catch { return {}; }
   }
   function settingsFor(index, override){
-    return {...DEFAULTS, ...(payrollState()[String(index)] || {}), ...(override || {})};
+    const cfg={...DEFAULTS, ...(payrollState()[String(index)] || {}), ...(override || {})};
+    for(const [key,value] of Object.entries(DEFAULTS))if(typeof value==='number')cfg[key]=window.EuroteamsInput.normalize(cfg[key]);
+    cfg.days=Math.min(31,Math.trunc(cfg.days));
+    cfg.shortDays=Math.min(2,cfg.days,Math.trunc(cfg.shortDays));
+    return cfg;
   }
 
   const payrollFromGross=(gross,cfg)=>window.EuroteamsTax2026.payroll(gross,cfg);
@@ -233,7 +237,7 @@
     const tbody=$('resultTableBody');if(!tbody)return;
     const focusedWorker=document.activeElement===$('tableWorkers')?$('tableWorkers'):null;
     const row=(label,value)=>`<tr><th scope="row">${label}</th><td>${money(value)}</td></tr>`;
-    tbody.innerHTML=`<tr><th scope="row">${tr('Darbuotojų skaičius','Number of workers')}</th><td><input id="tableWorkers" aria-label="${tr('Darbuotojų skaičius','Number of workers')}" type="number" min="1" step="1" value="${c.workers}" style="max-width:120px"></td></tr>`+
+    tbody.innerHTML=`<tr><th scope="row">${tr('Darbuotojų skaičius','Number of workers')}</th><td><input id="tableWorkers" aria-label="${tr('Darbuotojų skaičius','Number of workers')}" type="number" min="1" max="1000000000" step="1" value="${c.workers}" style="max-width:120px"></td></tr>`+
       [[tr('Kliento pajamos / darbuotojui','Client revenue per worker'),c.revenue],...detailRows(c),
       [tr('Apgyvendinimas','Accommodation'),c.housing],[tr('Kelionės','Travel'),c.travelCost],
       [tr('Vietinis transportas','Local transport'),c.localTransport],[tr('Darbo rūbai / įrankiai','Workwear / tools'),c.workwearTools],
@@ -244,6 +248,7 @@
       [tr('Komandos pelnas','Team profit'),c.teamProfit]].map(([label,value])=>row(label,value)).join('')+
       `<tr><th scope="row">${tr('Pelno marža','Profit margin')}</th><td>${pct(c.margin)}</td></tr>`;
     if(focusedWorker){$('tableWorkers').replaceWith(focusedWorker);focusedWorker.focus();}
+    $('tableWorkers').onblur=e=>{e.target.value=String(Math.max(1,Math.round(window.EuroteamsInput.normalize(e.target.value))));$('workers').value=e.target.value;$('workers').dispatchEvent(new Event('input',{bubbles:true}));};
     $('tableWorkers').oninput=e=>{ $('workers').value=e.target.value;$('workers').dispatchEvent(new Event('input',{bubbles:true})); };
     for(const row of tbody.rows){const label=row.cells[0].textContent;if(/Pelnas|pelnas|profit|margin|marža/i.test(label)&&!/Tarifas|rate/.test(label))tone(row.cells[1],/margin|marža/i.test(label)?c.margin:/valandą|per hour/i.test(label)?c.profitHour:c.profit);}
     const detail=$('payrollBreakdown');if(detail)detail.innerHTML=detailRows(c).map(([label,value])=>`<div class="metric"><span>${label}</span><strong>${money(value)}</strong></div>`).join('');
@@ -385,11 +390,10 @@
   if(!document.querySelector('link[data-euroteams-audit-css]')){
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = 'final-audit.css?v=20261015-examples1';
+    link.href = 'final-audit.css?v=20261016-physicalqa1';
     link.dataset.euroteamsAuditCss = '1';
     document.head.appendChild(link);
   }
 
   regressionTests();
-  applyCanonicalResults();
 })();

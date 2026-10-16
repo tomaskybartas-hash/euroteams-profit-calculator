@@ -50,4 +50,14 @@ let saved={};for(let i=0;i<w.localStorage.length;i++){let k=w.localStorage.key(i
 ok(el('nameInput').value==='Saved project'&&near(last().workerTotal,old)&&last().cfg.days===12,'Reload restores inputs and payroll settings');
 ok(near(w.__euroteamsCanonicalLast.allCost,w.__euroteamsCanonicalLast.allRevenue-w.__euroteamsCanonicalLast.allProfit),'All-scenario totals balance');
 for(const row of el('resultTableBody').rows)ok(!/NaN|Infinity|undefined|null/.test(row.textContent),'Finite table row');
-w.close();console.log(`${count} assertions passed`);
+w.close();
+
+// Extreme finite input must be bounded before arithmetic (physical QA regression).
+input('clientRate',1e308);input('hours',200);
+ok(Number.isFinite(last().profit)&&!/[∞]|NaN|Infinity/.test(el('profitValue').textContent),'Extreme tariff cannot overflow profit');
+input('postingRate',1e308);
+ok(Number.isFinite(last().workerTotal),'Extreme allowance stays finite');
+el('exampleStatus').textContent='Pavyzdys ištrintas';el('enBtn').click();
+ok(el('exampleStatus').textContent==='','Language switch clears transient old-language status');
+
+console.log(`${count} assertions passed`);

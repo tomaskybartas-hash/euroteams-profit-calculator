@@ -8,7 +8,7 @@
   window.EuroteamsDailyRates=countries;
   function read(key,fallback){try{return JSON.parse(window.EuroteamsStorage.getItem(key))||fallback}catch{return fallback}}
   function context(){const state=read(MAIN,{selected:0,scenarios:[]});return {state,index:state.selected,scenario:state.scenarios[state.selected]||{}}}
-  function config(){return {...defaults,...read(KEY,{})[context().index]}}
+  function config(){const c={...defaults,...read(KEY,{})[context().index]};for(const [k,v] of Object.entries(defaults))if(typeof v==='number')c[k]=window.EuroteamsInput.normalize(c[k]);return c}
   function save(patch){const all=read(KEY,{}),i=context().index;all[i]={...config(),...patch};window.EuroteamsStorage.setItem(KEY,JSON.stringify(all));window.renderEuroteamsCore()}
   const field=(id,label,type='number')=>`<div class="field"><label for="${id}" id="${id}Label">${label}</label><input id="${id}" type="${type}" min="0" step="0.01"></div>`;
   const select=(id)=>`<div class="field"><label for="${id}" id="${id}Label"></label><select id="${id}"><option value="no"></option><option value="yes"></option></select></div>`;
@@ -25,18 +25,18 @@
     $('rateHint').insertAdjacentElement('beforebegin',postingExtra);
     for(const [id,key] of [['taxMode','taxMode'],['wageBasis','wageBasis']])$(id).addEventListener('change',e=>save({[key]:e.target.value}));
     $('taxResident').addEventListener('change',e=>save({taxResident:e.target.value==='yes'}));
-    for(const id of ['priorSocialIncome','otherAnnualIncome','floorBase','contractWage','shortDays','customCountryLimit'])$(id).addEventListener('input',e=>{const value=Number(e.target.value);save({[id]:id==='shortDays'?Math.min(2,Math.trunc(Math.max(0,value||0)),Math.trunc(config().days||0)):Number.isFinite(value)?Math.max(0,value):0})});
+    for(const id of ['priorSocialIncome','otherAnnualIncome','floorBase','contractWage','shortDays','customCountryLimit'])$(id).addEventListener('input',e=>{const value=Number(e.target.value);save({[id]:id==='shortDays'?Math.min(2,Math.trunc(Math.max(0,value||0)),Math.trunc(config().days||0)):Number.isFinite(value)?window.EuroteamsInput.normalize(value):0})});
 
     Object.keys(countries).forEach(code=>{const opt=document.createElement('option');opt.value=code;$('postingCountry').appendChild(opt)});
     [['a1Enabled','a1'],['includePerDiemInNet','includePerDiemInNet']].forEach(([id,key])=>$(id).addEventListener('change',e=>save({[key]:e.target.checked})));
     [['pension2','pension2'],['applyNpd','applyNpd']].forEach(([id,key])=>$(id).addEventListener('change',e=>save({[key]:e.target.value==='yes'})));
     [['employerRate2026','employerRate'],['postingDays','days'],['postingRate','perDiemRate'],['localTransport2026','localTransport'],['workwearTools2026','workwearTools']].forEach(([id,key])=>{
-      $(id).addEventListener('input',e=>{const v=Number(e.target.value);let normalized=Number.isFinite(v)?Math.max(0,v):0;if(key==='days')normalized=Math.min(31,Math.trunc(normalized));save(key==='days'?{days:normalized,shortDays:Math.min(config().shortDays||0,normalized)}:{[key]:normalized})});
+      $(id).addEventListener('input',e=>{const v=Number(e.target.value);let normalized=Number.isFinite(v)?window.EuroteamsInput.normalize(v):0;if(key==='days')normalized=Math.min(31,Math.trunc(normalized));save(key==='days'?{days:normalized,shortDays:Math.min(config().shortDays||0,normalized)}:{[key]:normalized})});
       $(id).addEventListener('blur',e=>{if(e.target.value!=='')e.target.value=String(config()[key])});
     });
     $('postingDays').step='1';$('postingDays').max='31';$('shortDays').max='2';
     $('postingCountry').addEventListener('change',e=>save({country:e.target.value,perDiemRate:countries[e.target.value][2]}));
-    document.querySelectorAll('input[type=number]').forEach(el=>{el.min=['workers','workWeeks'].includes(el.id)?'1':'0';if(!['workers','workWeeks','homeWeeks','postingDays','shortDays'].includes(el.id))el.step='0.01';el.addEventListener('blur',()=>{const min=Number(el.min)||0;if((el.value!==''&&Number(el.value)<min)||(el.value===''&&min>0)){el.value=String(min);el.dispatchEvent(new Event('input',{bubbles:true}));}});});
+    document.querySelectorAll('input[type=number]').forEach(el=>{el.min=['workers','workWeeks'].includes(el.id)?'1':'0';if(!el.max)el.max=String(window.EuroteamsInput.max);if(!['workers','workWeeks','homeWeeks','postingDays','shortDays'].includes(el.id))el.step='0.01';el.addEventListener('blur',()=>{const min=Number(el.min)||0;if((el.value!==''&&(Number(el.value)<min||Number(el.value)>Number(el.max)))||(el.value===''&&min>0)){el.value=String(window.EuroteamsInput.normalize(el.value,min));el.dispatchEvent(new Event('input',{bubbles:true}));}});});
     document.querySelectorAll('.field').forEach(el=>{const input=el.querySelector('input,select,textarea'),label=el.querySelector('label');if(input&&label&&!label.htmlFor)label.htmlFor=input.id});
   }
   function render(){
