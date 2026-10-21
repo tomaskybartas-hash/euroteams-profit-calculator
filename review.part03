@@ -1,0 +1,33 @@
+id:int):
+    p=next((x for x in PROJECTS if x['id']==pid),None)
+    if p:
+        p.update(stage='RECRUITING',matched=83,contacted=71,interested=34,qualified=27,ready=21)
+        AUDIT.insert(0,f'START RECRUITMENT activated: {p["name"]}')
+    return RedirectResponse(f'/projects/{pid}',303)
+
+@app.get('/crews', response_class=HTMLResponse)
+def crews():
+    body='''<div class="grid"><div class="card"><div class="eyebrow">CREW</div><h2>Baltic Welders</h2><p>1 Crew Leader · 3 Welders · 2 Pipefitters</p><span class="badge green">AVAILABLE TOGETHER</span></div><div class="card"><div class="eyebrow">CREW</div><h2>LT Mechanical</h2><p>1 Supervisor · 5 Mechanical Fitters</p><span class="badge amber">AVAILABLE PARTIALLY</span></div></div>'''
+    return layout('Crews',body,'Crews')
+
+@app.get('/workforce-map', response_class=HTMLResponse)
+def workforce_map():
+    data=[('Poland','18,240','6,400'),('Romania','14,800','5,100'),('Lithuania','4,200','1,200'),('Bulgaria','7,840','2,040'),('Latvia','2,960','840'),('Spain','9,720','2,380'),('Italy','11,100','2,910')]
+    rows=''.join(f'<tr><td><strong>{c}</strong></td><td>{t}</td><td>{a}</td><td><div class="progress"><i style="width:{int(a.replace(",",""))/int(t.replace(",",""))*100:.0f}%"></i></div></td></tr>' for c,t,a in data)
+    body=f'''<div class="card"><h2>Workforce Heatmap</h2><p class="sub">Review-mode supply visualization. Production values will come from the live worker network.</p><table><thead><tr><th>Country</th><th>Total network</th><th>Available</th><th>Availability</th></tr></thead><tbody>{rows}</tbody></table></div>'''
+    return layout('Workforce Map',body,'Workforce Map')
+
+@app.get('/audit', response_class=HTMLResponse)
+def audit():
+    body='<div class="card">'+''.join(f'<div class="row" style="grid-template-columns:1fr auto"><div>{a}</div><span class="sub">system event</span></div>' for a in AUDIT)+'</div>'
+    return layout('Audit & Activity',body,'Audit')
+
+@app.get('/api/health')
+def health(): return {'ok':True,'service':'workforce-live','mode':'review'}
+
+@app.get('/api/workforce/supply')
+def supply(country:str|None=None, profession:str|None=None):
+    ws=WORKERS
+    if country: ws=[w for w in ws if w['country'].lower()==country.lower()]
+    if profession: ws=[w for w in ws if profession.lower() in w['trade'].lower()]
+    return {'total':len(ws),'available':sum(1 for w in ws if 'AVAILABLE' in w['status'] or 'OPEN' in w['status']),'ready_to_deploy':sum(1 for w in ws if w['ready'])}
