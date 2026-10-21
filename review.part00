@@ -1,0 +1,31 @@
+from fastapi import FastAPI, Request, Form
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+from datetime import date, timedelta
+import os, html, urllib.parse
+
+app = FastAPI(title='Workforce Live')
+
+WORKERS = [
+    {'id':1,'name':'Piotr Kowalski','country':'Poland','trade':'MIG/MAG Welder 135/136','status':'AVAILABLE NOW','available':'Today','rate':21,'rotation':'6/2','language':'English A2','cert':'135/136','ready':True,'confidence':96,'fit':94,'interest':82,'arrival':91,'crew':'Baltic Welders','phone':'+48 600 123 456'},
+    {'id':2,'name':'Marek Nowak','country':'Poland','trade':'Pipefitter','status':'OPEN TO OFFERS','available':'3 days','rate':20,'rotation':'6/2','language':'English B1','cert':'VCA','ready':True,'confidence':91,'fit':90,'interest':76,'arrival':88,'crew':'Baltic Welders','phone':'+48 600 222 456'},
+    {'id':3,'name':'Andrei Popescu','country':'Romania','trade':'TIG Welder 141','status':'AVAILABLE FROM DATE','available':str(date.today()+timedelta(days=7)),'rate':22,'rotation':'8/2','language':'English A2','cert':'141','ready':False,'confidence':84,'fit':88,'interest':79,'arrival':83,'crew':'','phone':'+40 700 321 654'},
+    {'id':4,'name':'Jonas Petrauskas','country':'Lithuania','trade':'Mechanical Fitter','status':'AVAILABLE NOW','available':'Today','rate':19,'rotation':'6/2','language':'English B1','cert':'VCA','ready':True,'confidence':98,'fit':86,'interest':72,'arrival':94,'crew':'LT Mechanical','phone':'+370 600 11111'},
+    {'id':5,'name':'Ivan Dimitrov','country':'Bulgaria','trade':'MIG/MAG Welder 135/136','status':'CURRENTLY WORKING','available':str(date.today()+timedelta(days=21)),'rate':20,'rotation':'6/2','language':'English A2','cert':'135/136','ready':False,'confidence':77,'fit':84,'interest':68,'arrival':80,'crew':'','phone':'+359 88 555 4444'},
+    {'id':6,'name':'Luca Bianchi','country':'Italy','trade':'Electrician','status':'AVAILABLE NOW','available':'Today','rate':23,'rotation':'8/2','language':'English B1','cert':'VCA','ready':True,'confidence':93,'fit':82,'interest':73,'arrival':89,'crew':'','phone':'+39 320 555 1111'},
+]
+
+PROJECTS = [
+    {'id':1,'name':'20 MIG/MAG Welders — Netherlands','country':'Netherlands','trade':'MIG/MAG Welder 135/136','qty':20,'start':str(date.today()+timedelta(days=10)),'rate':21,'rotation':'6/2','hours':50,'stage':'RECRUITING','matched':83,'contacted':71,'interested':34,'qualified':27,'ready':21},
+    {'id':2,'name':'Mechanical Team — Finland','country':'Finland','trade':'Mechanical Fitter','qty':8,'start':str(date.today()+timedelta(days=14)),'rate':20,'rotation':'6/2','hours':50,'stage':'DRAFT','matched':0,'contacted':0,'interested':0,'qualified':0,'ready':0},
+]
+
+AUDIT = [
+    'Availability reconfirmed for Piotr Kowalski',
+    'Project 20 MIG/MAG Welders — Netherlands started recruitment',
+    '21 candidates reached READY TO DEPLOY',
+    'Worker Passport verified for Jonas Petrauskas',
+]
+
+CSS = '''
+:root{--bg:#f4f6f8;--card:#fff;--ink:#18222d;--muted:#6b7785;--line:#e3e8ee;--nav:#0f1720;--accent:#d99b2b;--green:#168a55;--blue:#2469d8;--red:#c84a4a}*{box-sizing:border-box}body{margin:0;font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink)}a{color:inherit;text-decoration:none}.shell{display:grid;grid-template-columns:240px 1fr;min-height:100vh}.side{background:var(--nav);color:#fff;padding:24px 16px;position:sticky;top:0;height:100vh}.brand{font-weight:800;font-size:22px;letter-spacing:.2px;margin:2px 10px 28px}.brand span{color:var(--accent)}.nav a{display:block;padding:11px 12px;border-radius:9px;margin:5px 0;color:#dce3ea}.nav a:hover,.nav a.active{background:#1d2a36;color:#fff}.main{padding:28px 34px 50px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}.eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:700}.h1{font-size:30px;font-weight:800;margin:3px 0}.sub{color:var(--muted)}.demo{background:#fff3d6;color:#8a5a00;border:1px solid #f1d391;padding:8px 12px;border-radius:999px;font-size:13px;font-weight:700}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:0 1px 2px rgba(15,23,32,.03)}.metric .v{font-size:30px;font-weight:800;margin-top:8px}.metric .k{color:var(--muted);font-size:13px;font-weight:600}.section{margin-top:22px}.section-title{font-size:18px;font-weight:800;margin:0 0 12px}.row{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr auto;gap:12px;align-items:center;padding:13px 14px;border-top:1px solid var(--line)}.row:first-child{border-top:0}.badge{display:inline-flex;padding:5px 8px;border-radius:999px;font-size:12px;font-weight:800;background:#eef2f6}.green{background:#e7f6ee;color:#0b7545}.blue{background:#e8f0ff;color:#2057ae}.amber{background:#fff3d6;color:#8a5a00}.red{background:#fdecec;color:#9b2929}.btn{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:9px;padding:10px 14px;font-weight:800;cursor:pointer;background:var(--nav);color:#fff}.btn.gold{background:var(--accent);color:#1f180a}.btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}th,td{text-align:left;padding:12px 13px;border-bottom:1px solid var(--line);font-size:14px}th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:#fafbfc}tr:last-child td{border-bottom:0}.cols{display:grid;grid-template-columns:2fr 1fr;gap:18px}.progress{height:8px;background:#edf1f4;border-radius:99px;overflow:hidden}.progress i{display:block;height:100%;background:var(--accent)}.pipeline{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}.pipe{padding:14px;border-radius:12px;background:#fff;border:1px
