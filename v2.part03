@@ -1,0 +1,35 @@
+name="status"><option value="">All availability</option>{''.join(f'<option {"selected" if status==s else ""}>{s}</option>' for s in ['AVAILABLE NOW','OPEN TO OFFERS','AVAILABLE FROM DATE','CURRENTLY WORKING','NOT LOOKING','UNKNOWN'])}</select><button class="btn ghost">Filter</button><a class="btn" href="/workers/new">+ Add Worker</a></form><table><thead><tr><th>Worker</th><th>Trade</th><th>Availability</th><th>From</th><th>Rate</th><th>Confidence</th><th>Passport</th></tr></thead><tbody>{rows}</tbody></table>'''
+    return layout('Workers',body,'Workers')
+
+@app.get('/workers/new', response_class=HTMLResponse)
+def worker_new():
+    body='''<div class="card"><form class="form" method="post"><div><label>Name<input name="name" required></label></div><div><label>Country<input name="country" required></label></div><div><label>Trade<input name="trade" required></label></div><div><label>Phone<input name="phone"></label></div><div><label>Expected net €/h<input name="rate" type="number" step="0.5" value="20"></label></div><div><label>Rotation<input name="rotation" value="6/2"></label></div><div><label>Language<input name="language" value="English A2"></label></div><div><label>Certificate<input name="cert" value="Pending"></label></div><div><label>Status<select name="status"><option>AVAILABLE NOW</option><option>OPEN TO OFFERS</option><option>AVAILABLE FROM DATE</option><option>CURRENTLY WORKING</option><option>NOT LOOKING</option></select></label></div><div class="wide"><button class="btn">Create Worker</button></div></form></div>'''
+    return layout('Add Worker',body,'Workers')
+
+@app.post('/workers/new')
+def worker_create(name:str=Form(...),country:str=Form(...),trade:str=Form(...),phone:str=Form(''),rate:float=Form(20),rotation:str=Form('6/2'),language:str=Form('English A2'),cert:str=Form('Pending'),status:str=Form('AVAILABLE NOW')):
+    wid=execute('''INSERT INTO workers(name,country,trade,phone,status,available_from,rate,rotation,language,cert,ready,confidence,last_confirmed) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)''',(name,country,trade,phone,status,'Today',rate,rotation,language,cert,0,95,str(date.today())))
+    audit('Worker created: '+name)
+    return RedirectResponse(f'/workers/{wid}',303)
+
+@app.get('/workers/{wid}', response_class=HTMLResponse)
+def worker_detail(wid:int):
+    w=qone('SELECT * FROM workers WHERE id=?',(wid,))
+    if not w:return HTMLResponse('Not found',404)
+    token=sign(f'worker:{wid}')[:24]
+    body=f'''<div class="cols"><div class="card"><h2>{esc(w['name'])}</h2><p class="sub">{esc(w['country'])} · {esc(w['trade'])}</p><div class="grid" style="grid-template-columns:repeat(2,1fr)"><div><b>Availability</b><p>{status_chip(w['status'])}</p></div><div><b>Confidence</b><p>{w['confidence']}%</p></div><div><b>Expected rate</b><p>€{w['rate']} net/h</p></div><div><b>Rotation</b><p>{esc(w['rotation'])}</p></div><div><b>Language</b><p>{esc(w['language'])}</p></div><div><b>Certificate</b><p>{esc(w['cert'])}</p></div></div></div><div class="card"><h3>Digital Worker Passport</h3><p>Identity <span class="chip green">VERIFIED</span></p><p>Qualification <span class="chip green">STRUCTURED</span></p><p>Certificates <span class="chip {'green' if w['cert']!='Pending' else 'amber'}">{esc(w['cert'])}</span></p><p>Availability <span class="chip green">{esc(w['last_confirmed'] or 'NEEDS CHECK')}</span></p><p>Ready to Deploy <span class="chip {'green' if w['ready'] else 'amber'}">{'YES' if w['ready'] else 'PENDING'}</span></p></div></div><div class="section card"><h3>Update availability</h3><form class="form" method="post" action="/workers/{wid}/availability"><div><label>Status<select name="status">{''.join(f'<option {"selected" if w["status"]==s else ""}>{s}</option>' for s in ['AVAILABLE NOW','OPEN TO OFFERS','AVAILABLE FROM DATE','CURRENTLY WORKING','NOT LOOKING'])}</select></label></div><div><label>Available from<input name="available_from" value="{esc(w['available_from'])}"></label></div><div class="wide"><button class="btn greenbtn">Confirm availability</button></div></form><p class="sub">Worker self-service link: <a href="/worker/{wid}/status?token={token}">open one-click status page</a></p></div>'''
+    return layout(w['name'],body,'Workers')
+
+@app.post('/workers/{wid}/availability')
+def worker_availability(wid:int,status:str=Form(...),available_from:str=Form('')):
+    w=qone('SELECT name FROM workers WHERE id=?',(wid,))
+    if w:
+      execute('UPDATE workers SET status=?,available_from=?,last_confirmed=?,confidence=? WHERE id=?',(status,available_from or 'Today',str(date.today()),100,wid)); audit(f'Availability reconfirmed: {w["name"]} → {status}')
+    return RedirectResponse(f'/workers/{wid}',303)
+
+@app.get('/worker/{wid}/status', response_class=HTMLResponse)
+def worker_status_page(wid:int,token:str=''):
+    if not hmac.compare_digest(token,sign(f'worker:{wid}')[:24]): return HTMLResponse('Invalid link',403)
+    w=qone('SELECT * FROM workers WHERE id=?',(wid,));
+    if not w:return HTMLResponse('Not found',404)
+    return HTMLResponse(f'''<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>{CSS}</style></head><body><div class="loginwrap"><div clas
