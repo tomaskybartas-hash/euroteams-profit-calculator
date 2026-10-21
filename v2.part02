@@ -1,0 +1,56 @@
+tyle="color:#17212b;margin-left:0">WORKFORCE <span>LIVE</span></div><p class="sub">Euroteams Group internal review</p>{err}<label>Username<input name="username" required></label><label>Password<input name="password" type="password" required></label><button class="btn" style="width:100%">Sign in</button></form></div></body></html>''')
+
+@app.post('/login')
+def login(username:str=Form(...), password:str=Form(...)):
+    if not (hmac.compare_digest(username,ADMIN_USER) and hmac.compare_digest(password,ADMIN_PASSWORD)):
+        return RedirectResponse('/login?error=1',303)
+    r=RedirectResponse('/',303); r.set_cookie('wl_auth',sign('admin:'+ADMIN_USER),httponly=True,samesite='lax',secure=True,max_age=60*60*12); return r
+
+@app.get('/logout')
+def logout():
+    r=RedirectResponse('/login',303); r.delete_cookie('wl_auth'); return r
+
+def qone(sql,args=()):
+    c=db(); r=c.execute(sql,args).fetchone(); c.close(); return r
+
+def qall(sql,args=()):
+    c=db(); r=c.execute(sql,args).fetchall(); c.close(); return r
+
+def execute(sql,args=()):
+    c=db(); cur=c.execute(sql,args); c.commit(); rid=cur.lastrowid; c.close(); return rid
+
+def audit(event): execute('INSERT INTO audit(event) VALUES(?)',(event,))
+
+def match_score(w,p):
+    exact=1 if w['trade'].lower()==p['trade'].lower() else 0
+    trade=45 if exact else (22 if any(k in w['trade'].lower() for k in p['trade'].lower().split()) else 5)
+    rate=max(0,20-int(max(0,float(w['rate'])-float(p['rate']))*5))
+    rotation=12 if not p['rotation'] or w['rotation']==p['rotation'] else 5
+    availability=15 if w['status'] in ('AVAILABLE NOW','OPEN TO OFFERS') else 8 if w['status']=='AVAILABLE FROM DATE' else 2
+    readiness=8 if w['ready'] else 3
+    fit=min(100,trade+rate+rotation+availability+readiness)
+    interest=min(95,max(35,fit-8 + (5 if float(w['rate'])<=float(p['rate']) else -8)))
+    arrival=min(97,max(40,int(w['confidence'])-4 + (4 if w['ready'] else -8)))
+    eligibility='PASS' if exact and float(w['rate'])<=float(p['rate'])+2 else 'REVIEW'
+    return fit,interest,arrival,eligibility
+
+@app.get('/', response_class=HTMLResponse)
+def dashboard():
+    total=qone('SELECT COUNT(*) n FROM workers')['n']; available=qone("SELECT COUNT(*) n FROM workers WHERE status IN ('AVAILABLE NOW','OPEN TO OFFERS')")['n']; ready=qone('SELECT COUNT(*) n FROM workers WHERE ready=1')['n']; active=qone("SELECT COUNT(*) n FROM projects WHERE stage!='DRAFT'")['n']
+    need=qone("SELECT COALESCE(SUM(qty),0) n FROM projects WHERE stage!='CLOSED'")['n']; interested=qone("SELECT COUNT(*) n FROM candidate_pipeline WHERE stage IN ('INTERESTED','QUALIFIED','READY')")['n']; qualified=qone("SELECT COUNT(*) n FROM candidate_pipeline WHERE stage IN ('QUALIFIED','READY')")['n']; contacted=qone('SELECT COUNT(*) n FROM candidate_pipeline')['n']
+    metrics=[('TOTAL WORKERS',total),('AVAILABLE NOW',available),('READY TO DEPLOY',ready),('ACTIVE PROJECTS',active),('WORKERS NEEDED',need),('CONTACTED',contacted),('INTERESTED',interested),('READY FOR REVIEW',qualified)]
+    cards=''.join(f'<div class="card metric"><div class="k">{k}</div><div class="v">{v}</div></div>' for k,v in metrics)
+    ps=qall('SELECT * FROM projects ORDER BY id DESC LIMIT 5')
+    prows=''.join(f'''<div class="row"><div><strong>{esc(p['name'])}</strong><div class="sub">{esc(p['country'])} · {esc(p['trade'])}</div></div><div>{status_chip(p['stage'])} <a class="btn ghost" href="/projects/{p['id']}">Open</a></div></div>''' for p in ps)
+    body=f'''<div class="grid">{cards}</div><div class="cols section"><div><div class="section-title">Active staffing</div><div class="card">{prows or '<span class="sub">No projects yet.</span>'}</div></div><div><div class="section-title">Availability Engine</div><div class="card"><b>{available} workers ready for outreach</b><p class="sub">Live state is separated from CV data and can be reconfirmed independently.</p><a class="btn ghost" href="/availability">Open Availability Engine</a></div></div></div><div class="section hero"><h2>One Button Recruitment</h2><p>Create a project, press START RECRUITMENT, rank the network and move only qualified workers into human review.</p><a class="btn gold" href="/projects/new">Create Project</a></div>'''
+    return layout('Control Center',body)
+
+@app.get('/workers', response_class=HTMLResponse)
+def workers(q:str='',status:str=''):
+    sql='SELECT * FROM workers WHERE 1=1'; args=[]
+    if q: sql+=' AND (lower(name) LIKE ? OR lower(trade) LIKE ? OR lower(country) LIKE ?)'; z='%'+q.lower()+'%'; args += [z,z,z]
+    if status: sql+=' AND status=?'; args.append(status)
+    sql+=' ORDER BY id DESC'
+    ws=qall(sql,args)
+    rows=''.join(f'''<tr><td><a href="/workers/{w['id']}"><strong>{esc(w['name'])}</strong></a><br><span class="sub">{esc(w['country'])} · {esc(w['phone'])}</span></td><td>{esc(w['trade'])}</td><td>{status_chip(w['status'])}</td><td>{esc(w['available_from'])}</td><td>€{w['rate']}/h</td><td>{w['confidence']}%</td><td>{'<span class="chip green">READY</span>' if w['ready'] else '<span class="chip amber">VERIFY</span>'}</td></tr>''' for w in ws)
+    body=f'''<form class="searchbar"><input name="q" value="{esc(q)}" placeholder="Search name, trade, country"><select 
