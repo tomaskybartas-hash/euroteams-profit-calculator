@@ -1,0 +1,25 @@
+EW</div><h2>{esc(c['crew'])}</h2><p>{c['n']} members · {c['a']} currently available</p><span class="chip {'green' if c['a']==c['n'] else 'amber'}">{'AVAILABLE TOGETHER' if c['a']==c['n'] else 'AVAILABLE PARTIALLY'}</span></div>''' for c in crews)+'</div>'
+    return layout('Crews',body,'Crews')
+
+@app.get('/workforce-map', response_class=HTMLResponse)
+def workforce_map():
+    data=qall("SELECT country,COUNT(*) total,SUM(CASE WHEN status IN ('AVAILABLE NOW','OPEN TO OFFERS') THEN 1 ELSE 0 END) available FROM workers GROUP BY country ORDER BY total DESC")
+    rows=''.join(f'''<tr><td><strong>{esc(r['country'])}</strong></td><td>{r['total']}</td><td>{r['available']}</td><td><div class="progress"><i style="width:{(r['available']/r['total']*100 if r['total'] else 0):.0f}%"></i></div></td></tr>''' for r in data)
+    return layout('Workforce Map',f'''<div class="card"><h2>Live Workforce Supply</h2><p class="sub">Values come from the workers currently stored in this V2 environment.</p><table><thead><tr><th>Country</th><th>Total</th><th>Available/Open</th><th>Availability</th></tr></thead><tbody>{rows}</tbody></table></div>''','Workforce Map')
+
+@app.get('/audit', response_class=HTMLResponse)
+def audit_page():
+    events=qall('SELECT * FROM audit ORDER BY id DESC LIMIT 100')
+    body='<div class="card">'+''.join(f'''<div class="row"><div>{esc(e['event'])}</div><span class="sub">{esc(e['created_at'])}</span></div>''' for e in events)+'</div>'
+    return layout('Audit & Activity',body,'Audit')
+
+@app.get('/api/health')
+def health(): return {'ok':True,'service':'workforce-live','version':'v2','database':'sqlite'}
+
+@app.get('/api/workforce/supply')
+def supply(country:str|None=None, profession:str|None=None):
+    sql='SELECT * FROM workers WHERE 1=1'; args=[]
+    if country: sql+=' AND lower(country)=?'; args.append(country.lower())
+    if profession: sql+=' AND lower(trade) LIKE ?'; args.append('%'+profession.lower()+'%')
+    ws=qall(sql,args)
+    return {'total':len(ws),'available':sum(1 for w in ws if w['status'] in ('AVAILABLE NOW','OPEN TO OFFERS')),'ready_to_deploy':sum(1 for w in ws if w['ready'])}
