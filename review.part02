@@ -1,0 +1,42 @@
+ival']}%</strong></div><div class="pipe">Data confidence<strong>{w['confidence']}%</strong></div><div class="pipe">Crew<strong>{w['crew'] or '—'}</strong></div></div></div>'''
+    return layout(w['name'],body,'Workers')
+
+@app.get('/workers/new', response_class=HTMLResponse)
+def worker_new():
+    body='''<div class="card"><form class="form" method="post"><div><label>Name<input name="name" required></label></div><div><label>Country<input name="country" required></label></div><div><label>Trade<input name="trade" required></label></div><div><label>Expected net €/h<input name="rate" type="number" value="20"></label></div><div><label>Rotation<input name="rotation" value="6/2"></label></div><div><label>Status<select name="status"><option>AVAILABLE NOW</option><option>OPEN TO OFFERS</option><option>AVAILABLE FROM DATE</option><option>CURRENTLY WORKING</option></select></label></div><div class="wide"><button class="btn" type="submit">Create Worker</button></div></form></div>'''
+    return layout('Add Worker',body,'Workers')
+
+@app.post('/workers/new')
+def worker_create(name:str=Form(...),country:str=Form(...),trade:str=Form(...),rate:int=Form(20),rotation:str=Form('6/2'),status:str=Form('AVAILABLE NOW')):
+    WORKERS.append({'id':max(w['id'] for w in WORKERS)+1,'name':name,'country':country,'trade':trade,'status':status,'available':'Today','rate':rate,'rotation':rotation,'language':'English A2','cert':'Pending','ready':False,'confidence':95,'fit':80,'interest':70,'arrival':85,'crew':'','phone':'—'})
+    AUDIT.insert(0,f'Worker created: {name}')
+    return RedirectResponse('/workers',303)
+
+@app.get('/projects', response_class=HTMLResponse)
+def projects():
+    rows=''.join(f'''<tr><td><a href="/projects/{p['id']}"><strong>{p['name']}</strong></a></td><td>{p['country']}</td><td>{p['trade']}</td><td>{p['qty']}</td><td>{p['start']}</td><td>€{p['rate']}</td><td><span class="badge {'green' if p['stage']=='RECRUITING' else 'amber'}">{p['stage']}</span></td></tr>''' for p in PROJECTS)
+    body=f'''<div style="display:flex;justify-content:space-between;margin-bottom:12px"><div class="sub">Create demand and turn it into a live candidate pipeline.</div><a class="btn" href="/projects/new">+ New Project</a></div><table><thead><tr><th>Project</th><th>Country</th><th>Trade</th><th>Need</th><th>Start</th><th>Rate</th><th>Status</th></tr></thead><tbody>{rows}</tbody></table>'''
+    return layout('Projects',body,'Projects')
+
+@app.get('/projects/new', response_class=HTMLResponse)
+def project_new():
+    body='''<div class="card"><form class="form" method="post"><div><label>Project name<input name="name" required></label></div><div><label>Country<input name="country" value="Netherlands" required></label></div><div><label>Profession<input name="trade" value="MIG/MAG Welder 135/136" required></label></div><div><label>Number of workers<input type="number" name="qty" value="20"></label></div><div><label>Start date<input type="date" name="start"></label></div><div><label>Net €/h<input type="number" name="rate" value="21"></label></div><div><label>Rotation<input name="rotation" value="6/2"></label></div><div><label>Hours/week<input type="number" name="hours" value="50"></label></div><div class="wide"><button class="btn gold" type="submit">Create Project</button></div></form></div>'''
+    return layout('New Project',body,'Projects')
+
+@app.post('/projects/new')
+def project_create(name:str=Form(...),country:str=Form(...),trade:str=Form(...),qty:int=Form(20),start:str=Form(''),rate:int=Form(21),rotation:str=Form('6/2'),hours:int=Form(50)):
+    p={'id':max(p['id'] for p in PROJECTS)+1,'name':name,'country':country,'trade':trade,'qty':qty,'start':start or str(date.today()+timedelta(days=10)),'rate':rate,'rotation':rotation,'hours':hours,'stage':'DRAFT','matched':0,'contacted':0,'interested':0,'qualified':0,'ready':0}
+    PROJECTS.append(p); AUDIT.insert(0,f'Project created: {name}')
+    return RedirectResponse(f"/projects/{p['id']}",303)
+
+@app.get('/projects/{pid}', response_class=HTMLResponse)
+def project_detail(pid:int):
+    p=next((x for x in PROJECTS if x['id']==pid),None)
+    if not p:return HTMLResponse('Not found',404)
+    matches=sorted(WORKERS,key=lambda w:(w['trade']==p['trade'],w['fit'],w['confidence']),reverse=True)
+    candidate_rows=''.join(f'''<tr><td><strong>{w['name']}</strong><br><span class="sub">{w['country']} · {w['trade']}</span></td><td>{'PASS' if w['trade']==p['trade'] else 'REVIEW'}</td><td>{w['fit']}%</td><td>{w['interest']}%</td><td>{w['arrival']}%</td><td>{w['confidence']}%</td><td>{'<span class="badge green">READY</span>' if w['ready'] else '<span class="badge amber">VERIFY</span>'}</td></tr>''' for w in matches[:8])
+    body=f'''<div class="cols"><div class="card"><h2>{p['name']}</h2><p>{p['country']} · {p['trade']} · {p['qty']} workers</p><p class="sub">Start {p['start']} · €{p['rate']} net/h · rotation {p['rotation']} · {p['hours']}h/week</p></div><div class="hero-action"><h2>START RECRUITMENT</h2><p>Rank candidates, activate outreach and create a staffing pipeline.</p><form method="post" action="/projects/{p['id']}/start"><button class="btn gold">START RECRUITMENT</button></form></div></div><div class="section"><div class="section-title">Recruitment pipeline</div><div class="pipeline"><div class="pipe">Matched<strong>{p['matched']}</strong></div><div class="pipe">Contacted<strong>{p['contacted']}</strong></div><div class="pipe">Interested<strong>{p['interested']}</strong></div><div class="pipe">Qualified<strong>{p['qualified']}</strong></div><div class="pipe">Ready<strong>{p['ready']}</strong></div></div></div><div class="section"><div class="section-title">AI candidate ranking</div><table><thead><tr><th>Candidate</th><th>Eligibility</th><th>Fit</th><th>Interest</th><th>Arrival</th><th>Confidence</th><th>Passport</th></tr></thead><tbody>{candidate_rows}</tbody></table></div>'''
+    return layout(p['name'],body,'Projects')
+
+@app.post('/projects/{pid}/start')
+def start_recruitment(p
