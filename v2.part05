@@ -1,0 +1,53 @@
+created: '+name); return RedirectResponse(f'/projects/{pid}',303)
+
+def pipeline_counts(pid):
+    counts={s:0 for s in ['MATCHED','CONTACTED','INTERESTED','QUALIFIED','READY']}
+    for r in qall('SELECT stage,COUNT(*) n FROM candidate_pipeline WHERE project_id=? GROUP BY stage',(pid,)): counts[r['stage']]=r['n']
+    counts['CONTACTED'] += counts['INTERESTED']+counts['QUALIFIED']+counts['READY']
+    counts['INTERESTED'] += counts['QUALIFIED']+counts['READY']
+    counts['QUALIFIED'] += counts['READY']
+    return counts
+
+@app.get('/projects/{pid}', response_class=HTMLResponse)
+def project_detail(pid:int):
+    p=qone('SELECT * FROM projects WHERE id=?',(pid,));
+    if not p:return HTMLResponse('Not found',404)
+    ws=qall('SELECT * FROM workers')
+    ranked=[]
+    for w in ws:
+      fit,interest,arrival,elig=match_score(w,p); ranked.append((fit,interest,arrival,elig,w))
+    ranked.sort(key=lambda x:(x[3]=='PASS',x[0],x[2]),reverse=True)
+    existing={r['worker_id']:r['stage'] for r in qall('SELECT worker_id,stage FROM candidate_pipeline WHERE project_id=?',(pid,))}
+    candidate_rows=''.join(f'''<tr><td><a href="/workers/{w['id']}"><strong>{esc(w['name'])}</strong></a><br><span class="sub">{esc(w['country'])} · {esc(w['trade'])}</span></td><td><span class="chip {'green' if elig=='PASS' else 'amber'}">{elig}</span></td><td>{fit}%</td><td>{interest}%</td><td>{arrival}%</td><td>{w['confidence']}%</td><td>{status_chip(existing.get(w['id'],'MATCHED'))}</td><td><form method="post" action="/projects/{pid}/candidate/{w['id']}/stage"><select name="stage" onchange="this.form.submit()">{''.join(f'<option {"selected" if existing.get(w["id"],"MATCHED")==s else ""}>{s}</option>' for s in ['MATCHED','CONTACTED','INTERESTED','QUALIFIED','READY','REJECTED'])}</select></form></td></tr>''' for fit,interest,arrival,elig,w in ranked[:20])
+    c=pipeline_counts(pid)
+    body=f'''<div class="cols"><div class="card"><h2>{esc(p['name'])}</h2><p>{esc(p['country'])} · {esc(p['trade'])} · {p['qty']} workers</p><p class="sub">Start {esc(p['start_date'])} · €{p['rate']} net/h · rotation {esc(p['rotation'])} · {p['hours']}h/week</p></div><div class="hero"><h2>START RECRUITMENT</h2><p>Rank candidates and initialize the outreach pipeline.</p><form method="post" action="/projects/{pid}/start"><button class="btn gold">START RECRUITMENT</button></form></div></div><div class="section"><div class="section-title">Recruitment pipeline</div><div class="pipeline"><div class="pipe">Matched<strong>{c['MATCHED']}</strong></div><div class="pipe">Contacted<strong>{c['CONTACTED']}</strong></div><div class="pipe">Interested<strong>{c['INTERESTED']}</strong></div><div class="pipe">Qualified<strong>{c['QUALIFIED']}</strong></div><div class="pipe">Ready<strong>{c['READY']}</strong></div></div></div><div class="section"><div class="section-title">AI candidate ranking</div><table><thead><tr><th>Candidate</th><th>Eligibility</th><th>Fit</th><th>Interest</th><th>Arrival</th><th>Data confidence</th><th>Stage</th><th>Move</th></tr></thead><tbody>{candidate_rows}</tbody></table></div>'''
+    return layout(p['name'],body,'Projects')
+
+@app.post('/projects/{pid}/start')
+def start_recruitment(pid:int):
+    p=qone('SELECT * FROM projects WHERE id=?',(pid,));
+    if p:
+      execute("UPDATE projects SET stage='RECRUITING' WHERE id=?",(pid,))
+      ws=qall('SELECT * FROM workers')
+      for w in ws:
+        fit,interest,arrival,elig=match_score(w,p)
+        stage='CONTACTED' if elig=='PASS' and fit>=70 else 'MATCHED'
+        execute('''INSERT INTO candidate_pipeline(project_id,worker_id,stage,fit,interest,arrival,eligibility,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(project_id,worker_id) DO UPDATE SET fit=excluded.fit,interest=excluded.interest,arrival=excluded.arrival,eligibility=excluded.eligibility,updated_at=excluded.updated_at''',(pid,w['id'],stage,fit,interest,arrival,elig,datetime.utcnow().isoformat()))
+      audit('START RECRUITMENT activated: '+p['name'])
+    return RedirectResponse(f'/projects/{pid}',303)
+
+@app.post('/projects/{pid}/candidate/{wid}/stage')
+def candidate_stage(pid:int,wid:int,stage:str=Form(...)):
+    allowed={'MATCHED','CONTACTED','INTERESTED','QUALIFIED','READY','REJECTED'}
+    if stage not in allowed: stage='MATCHED'
+    p=qone('SELECT * FROM projects WHERE id=?',(pid,)); w=qone('SELECT * FROM workers WHERE id=?',(wid,))
+    if p and w:
+      fit,interest,arrival,elig=match_score(w,p)
+      execute('''INSERT INTO candidate_pipeline(project_id,worker_id,stage,fit,interest,arrival,eligibility,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(project_id,worker_id) DO UPDATE SET stage=excluded.stage,updated_at=excluded.updated_at''',(pid,wid,stage,fit,interest,arrival,elig,datetime.utcnow().isoformat()))
+      audit(f'Candidate stage changed: {w["name"]} → {stage} · {p["name"]}')
+    return RedirectResponse(f'/projects/{pid}',303)
+
+@app.get('/crews', response_class=HTMLResponse)
+def crews():
+    crews=qall("SELECT crew,COUNT(*) n,SUM(CASE WHEN status IN ('AVAILABLE NOW','OPEN TO OFFERS') THEN 1 ELSE 0 END) a FROM workers WHERE crew!='' GROUP BY crew")
+    body='<div class="grid">'+''.join(f'''<div class="card"><div class="eyebrow">CR
