@@ -1,0 +1,82 @@
+from fastapi import FastAPI, Request, Form
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from datetime import date, datetime, timedelta
+import sqlite3, os, html, hmac, hashlib, secrets
+from pathlib import Path
+
+app = FastAPI(title='Workforce Live V2')
+APP_SECRET = os.getenv('APP_SECRET','workforce-live-review-secret')
+ADMIN_USER = os.getenv('ADMIN_USER','tomas')
+ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD','change-me')
+DB_PATH = os.getenv('DB_PATH','/tmp/workforce_live_v2.db')
+Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
+
+def db():
+    c=sqlite3.connect(DB_PATH)
+    c.row_factory=sqlite3.Row
+    return c
+
+def init_db():
+    c=db(); cur=c.cursor()
+    cur.executescript('''
+    CREATE TABLE IF NOT EXISTS workers(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL, country TEXT NOT NULL, trade TEXT NOT NULL,
+      phone TEXT DEFAULT '', status TEXT DEFAULT 'UNKNOWN', available_from TEXT DEFAULT '',
+      rate REAL DEFAULT 0, rotation TEXT DEFAULT '', language TEXT DEFAULT '', cert TEXT DEFAULT '',
+      ready INTEGER DEFAULT 0, confidence INTEGER DEFAULT 50, crew TEXT DEFAULT '',
+      last_confirmed TEXT DEFAULT '', created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS projects(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL, country TEXT NOT NULL, trade TEXT NOT NULL, qty INTEGER DEFAULT 1,
+      start_date TEXT DEFAULT '', rate REAL DEFAULT 0, rotation TEXT DEFAULT '', hours INTEGER DEFAULT 40,
+      stage TEXT DEFAULT 'DRAFT', created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS candidate_pipeline(
+      project_id INTEGER NOT NULL, worker_id INTEGER NOT NULL,
+      stage TEXT DEFAULT 'MATCHED', fit INTEGER DEFAULT 0, interest INTEGER DEFAULT 0,
+      arrival INTEGER DEFAULT 0, eligibility TEXT DEFAULT 'REVIEW', updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY(project_id, worker_id)
+    );
+    CREATE TABLE IF NOT EXISTS audit(
+      id INTEGER PRIMARY KEY AUTOINCREMENT, event TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    ''')
+    n=cur.execute('SELECT COUNT(*) FROM workers').fetchone()[0]
+    if n==0:
+      seed_workers=[
+       ('Piotr Kowalski','Poland','MIG/MAG Welder 135/136','+48 600 123 456','AVAILABLE NOW','Today',21,'6/2','English A2','135/136',1,96,'Baltic Welders'),
+       ('Marek Nowak','Poland','Pipefitter','+48 600 222 456','OPEN TO OFFERS','3 days',20,'6/2','English B1','VCA',1,91,'Baltic Welders'),
+       ('Andrei Popescu','Romania','TIG Welder 141','+40 700 321 654','AVAILABLE FROM DATE',str(date.today()+timedelta(days=7)),22,'8/2','English A2','141',0,84,''),
+       ('Jonas Petrauskas','Lithuania','Mechanical Fitter','+370 600 11111','AVAILABLE NOW','Today',19,'6/2','English B1','VCA',1,98,'LT Mechanical'),
+       ('Ivan Dimitrov','Bulgaria','MIG/MAG Welder 135/136','+359 88 555 4444','CURRENTLY WORKING',str(date.today()+timedelta(days=21)),20,'6/2','English A2','135/136',0,77,''),
+       ('Luca Bianchi','Italy','Electrician','+39 320 555 1111','AVAILABLE NOW','Today',23,'8/2','English B1','VCA',1,93,''),
+      ]
+      cur.executemany('''INSERT INTO workers(name,country,trade,phone,status,available_from,rate,rotation,language,cert,ready,confidence,crew,last_confirmed)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',[(*w,str(date.today())) for w in seed_workers])
+      cur.execute('''INSERT INTO projects(name,country,trade,qty,start_date,rate,rotation,hours,stage) VALUES(?,?,?,?,?,?,?,?,?)''',
+                  ('20 MIG/MAG Welders — Netherlands','Netherlands','MIG/MAG Welder 135/136',20,str(date.today()+timedelta(days=10)),21,'6/2',50,'DRAFT'))
+      cur.execute("INSERT INTO audit(event) VALUES(?)",('Workforce Live V2 database initialized',))
+    c.commit(); c.close()
+
+init_db()
+
+def sign(value:str)->str:
+    return hmac.new(APP_SECRET.encode(), value.encode(), hashlib.sha256).hexdigest()
+
+def auth_ok(request:Request):
+    token=request.cookies.get('wl_auth','')
+    return hmac.compare_digest(token, sign('admin:'+ADMIN_USER))
+
+@app.middleware('http')
+async def auth_middleware(request:Request, call_next):
+    p=request.url.path
+    public = p.startswith('/login') or p.startswith('/api/health') or p.startswith('/worker/')
+    if not public and not auth_ok(request):
+        return RedirectResponse('/login?next='+html.escape(p), status_code=303)
+    return await call_next(request)
+
+CSS='''
+:root{--bg:#f4f6f8;--card:#fff;--ink:#17212b;--muted:#6f7a86;--line:#e1e7ec;--nav:#0e1720;--accent:#d59a2a;--green:#168a55;--blue:#2469d8;--red:#c84a4a;--purple:#7157c7}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink)}a{color:inherit;text-decoration:none}.shell{display:grid;grid-template-columns:245px 1fr;min-height:100vh}.side{background:var(--nav);color:#fff;padding:24px 16px;position:sticky;top:0;height:100vh}.brand{font-weight:900;font-size:22px;margin:2px 10px 25px}.brand span{color:var(--accent)}.nav a{display:block;padding:11px 12px;border-radius:9px;margin:4px 0;color:#dbe4ec}.nav a:hover,.nav a.active{background:#1c2a37;
