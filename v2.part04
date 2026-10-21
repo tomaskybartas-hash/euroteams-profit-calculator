@@ -1,0 +1,33 @@
+s="login"><div class="brand" style="color:#17212b;margin-left:0">WORKFORCE <span>LIVE</span></div><h2>Hi {esc(w['name'])}</h2><p>Are you available for a new project?</p><form method="post" action="/worker/{wid}/status?token={token}"><button class="btn greenbtn" name="status" value="AVAILABLE NOW" style="width:100%;margin:5px 0">YES — AVAILABLE NOW</button><button class="btn ghost" name="status" value="CURRENTLY WORKING" style="width:100%;margin:5px 0">NO — CURRENTLY WORKING</button><button class="btn ghost" name="status" value="OPEN TO OFFERS" style="width:100%;margin:5px 0">OPEN TO OFFERS</button></form><p class="sub">One tap updates your live availability.</p></div></div></body></html>''')
+
+@app.post('/worker/{wid}/status')
+def worker_status_update(wid:int,token:str='',status:str=Form(...)):
+    if not hmac.compare_digest(token,sign(f'worker:{wid}')[:24]): return HTMLResponse('Invalid link',403)
+    w=qone('SELECT name FROM workers WHERE id=?',(wid,));
+    if w: execute('UPDATE workers SET status=?,last_confirmed=?,confidence=100 WHERE id=?',(status,str(date.today()),wid)); audit(f'Worker self-confirmed availability: {w["name"]} → {status}')
+    return HTMLResponse(f'''<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>{CSS}</style></head><body><div class="loginwrap"><div class="login"><h2>Thank you.</h2><p>Your availability is now <b>{esc(status)}</b>.</p></div></div></body></html>''')
+
+@app.get('/availability', response_class=HTMLResponse)
+def availability():
+    ws=qall('SELECT * FROM workers ORDER BY last_confirmed DESC,id DESC')
+    fresh=sum(1 for w in ws if w['last_confirmed']==str(date.today()))
+    rows=''.join(f'''<tr><td><a href="/workers/{w['id']}"><strong>{esc(w['name'])}</strong></a></td><td>{esc(w['trade'])}</td><td>{status_chip(w['status'])}</td><td>{esc(w['available_from'])}</td><td>{esc(w['last_confirmed'] or 'Never')}</td><td>{w['confidence']}%</td></tr>''' for w in ws)
+    body=f'''<div class="grid"><div class="card metric"><div class="k">CONFIRMED TODAY</div><div class="v">{fresh}</div></div><div class="card metric"><div class="k">AVAILABLE / OPEN</div><div class="v">{sum(1 for w in ws if w['status'] in ('AVAILABLE NOW','OPEN TO OFFERS'))}</div></div><div class="card metric"><div class="k">WORKING</div><div class="v">{sum(1 for w in ws if w['status']=='CURRENTLY WORKING')}</div></div><div class="card metric"><div class="k">NEEDS RECONFIRMATION</div><div class="v">{sum(1 for w in ws if not w['last_confirmed'])}</div></div></div><div class="section hero"><h2>Availability Heartbeat</h2><p>Production mode will send consented WhatsApp/SMS/email prompts and update this state from one-tap worker responses.</p></div><div class="section"><table><thead><tr><th>Worker</th><th>Trade</th><th>Status</th><th>Available from</th><th>Last confirmed</th><th>Confidence</th></tr></thead><tbody>{rows}</tbody></table></div>'''
+    return layout('Availability Engine',body,'Availability')
+
+@app.get('/projects', response_class=HTMLResponse)
+def projects():
+    ps=qall('SELECT * FROM projects ORDER BY id DESC')
+    rows=''.join(f'''<tr><td><a href="/projects/{p['id']}"><strong>{esc(p['name'])}</strong></a></td><td>{esc(p['country'])}</td><td>{esc(p['trade'])}</td><td>{p['qty']}</td><td>{esc(p['start_date'])}</td><td>€{p['rate']}</td><td>{status_chip(p['stage'])}</td></tr>''' for p in ps)
+    body=f'''<div style="display:flex;justify-content:space-between;margin-bottom:12px"><div class="sub">Project demand becomes a live ranked candidate pipeline.</div><a class="btn" href="/projects/new">+ New Project</a></div><table><thead><tr><th>Project</th><th>Country</th><th>Trade</th><th>Need</th><th>Start</th><th>Rate</th><th>Status</th></tr></thead><tbody>{rows}</tbody></table>'''
+    return layout('Projects',body,'Projects')
+
+@app.get('/projects/new', response_class=HTMLResponse)
+def project_new():
+    body='''<div class="card"><form class="form" method="post"><div><label>Project name<input name="name" required></label></div><div><label>Country<input name="country" value="Netherlands" required></label></div><div><label>Profession<input name="trade" value="MIG/MAG Welder 135/136" required></label></div><div><label>Number of workers<input type="number" name="qty" value="20"></label></div><div><label>Start date<input type="date" name="start"></label></div><div><label>Net €/h<input type="number" step="0.5" name="rate" value="21"></label></div><div><label>Rotation<input name="rotation" value="6/2"></label></div><div><label>Hours/week<input type="number" name="hours" value="50"></label></div><div class="wide"><button class="btn gold">Create Project</button></div></form></div>'''
+    return layout('New Project',body,'Projects')
+
+@app.post('/projects/new')
+def project_create(name:str=Form(...),country:str=Form(...),trade:str=Form(...),qty:int=Form(20),start:str=Form(''),rate:float=Form(21),rotation:str=Form('6/2'),hours:int=Form(50)):
+    pid=execute('''INSERT INTO projects(name,country,trade,qty,start_date,rate,rotation,hours,stage) VALUES(?,?,?,?,?,?,?,?,?)''',(name,country,trade,qty,start or str(date.today()+timedelta(days=10)),rate,rotation,hours,'DRAFT'))
+    audit('Project 
