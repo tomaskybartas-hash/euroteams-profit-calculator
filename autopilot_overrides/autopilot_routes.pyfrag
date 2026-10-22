@@ -1,0 +1,35 @@
+
+
+@app.post("/projects/{project_id}/autopilot")
+def project_autopilot(project_id:int,request:Request,db:Session=Depends(get_db)):
+    user=current_user(request,db)
+    if not user:return RedirectResponse("/login",303)
+    require_roles(user,"admin","recruiter")
+    p=db.query(Project).filter(Project.id==project_id,Project.tenant_id==user.tenant_id).first()
+    if not p:raise HTTPException(404)
+    candidates=db.query(ProjectCandidate).filter(ProjectCandidate.project_id==p.id).order_by(ProjectCandidate.match_score.desc()).all()
+    if not candidates:
+        start_recruitment(db,p,tenant_id=user.tenant_id,limit=200,auto_outreach=False)
+        candidates=db.query(ProjectCandidate).filter(ProjectCandidate.project_id==p.id).order_by(ProjectCandidate.match_score.desc()).all()
+    ready=sum(1 for c in candidates if c.stage=="READY_TO_DEPLOY")
+    qualified=sum(1 for c in candidates if c.stage=="QUALIFIED")
+    interested=[c for c in candidates if c.stage=="INTERESTED"]
+    created_screenings=0
+    for c in interested:
+        existing=db.query(ScreeningResponse).filter(ScreeningResponse.candidate_id==c.id).count()
+        if not existing:
+            for key,text in SCREENING_QUESTIONS:
+                db.add(ScreeningResponse(tenant_id=user.tenant_id,candidate_id=c.id,worker_id=c.worker_id,question_key=key,question_text=text,status="PENDING"))
+            c.screening_status="IN_PROGRESS"
+            created_screenings+=1
+    db.commit()
+    target_outreach=max((p.workers_needed-ready-qualified)*4, p.workers_needed*2, 10)
+    sent=0
+    for c in candidates:
+        if sent>=target_outreach:break
+        if c.stage!="MATCHED" or c.eligibility!="PASS":continue
+        m=send_candidate_offer(db,c)
+        if m.provider_status.startswith("SENT"):
+            sent+=1
+    audit_event(db,user,"RECRUITMENT_AUTOPILOT","project",str(p.id),f"offers={sent}; screenings={created_screenings}; ready={ready}; qualified={qualified}")
+    return RedirectResponse(f"/projects/{p.id}?autopilot=1",303)
