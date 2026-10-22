@@ -1,5 +1,7 @@
 
 
+from datetime import datetime, timedelta
+
 @app.post("/projects/{project_id}/autopilot")
 def project_autopilot(project_id:int,request:Request,db:Session=Depends(get_db)):
     user=current_user(request,db)
@@ -12,6 +14,7 @@ def project_autopilot(project_id:int,request:Request,db:Session=Depends(get_db))
         start_recruitment(db,p,tenant_id=user.tenant_id,limit=200,auto_outreach=False)
         candidates=db.query(ProjectCandidate).filter(ProjectCandidate.project_id==p.id).order_by(ProjectCandidate.match_score.desc()).all()
     ready=sum(1 for c in candidates if c.stage=="READY_TO_DEPLOY")
+    reserved=sum(1 for c in candidates if c.stage=="RESERVED")
     qualified=sum(1 for c in candidates if c.stage=="QUALIFIED")
     interested=[c for c in candidates if c.stage=="INTERESTED"]
     created_screenings=0
@@ -23,7 +26,8 @@ def project_autopilot(project_id:int,request:Request,db:Session=Depends(get_db))
             c.screening_status="IN_PROGRESS"
             created_screenings+=1
     db.commit()
-    target_outreach=max((p.workers_needed-ready-qualified)*4, p.workers_needed*2, 10)
+    secured=ready+reserved
+    target_outreach=max((p.workers_needed-secured-qualified)*4, p.workers_needed*2, 10)
     sent=0
     for c in candidates:
         if sent>=target_outreach:break
@@ -31,5 +35,81 @@ def project_autopilot(project_id:int,request:Request,db:Session=Depends(get_db))
         m=send_candidate_offer(db,c)
         if m.provider_status.startswith("SENT"):
             sent+=1
-    audit_event(db,user,"RECRUITMENT_AUTOPILOT","project",str(p.id),f"offers={sent}; screenings={created_screenings}; ready={ready}; qualified={qualified}")
+    audit_event(db,user,"RECRUITMENT_AUTOPILOT","project",str(p.id),f"offers={sent}; screenings={created_screenings}; ready={ready}; reserved={reserved}; qualified={qualified}")
     return RedirectResponse(f"/projects/{p.id}?autopilot=1",303)
+
+@app.post("/candidates/{candidate_id}/reserve")
+def candidate_reserve(candidate_id:int,request:Request,db:Session=Depends(get_db)):
+    user=current_user(request,db)
+    if not user:return RedirectResponse("/login",303)
+    require_roles(user,"admin","recruiter")
+    c=db.query(ProjectCandidate).filter(ProjectCandidate.id==candidate_id).first()
+    if not c:raise HTTPException(404)
+    p=db.query(Project).filter(Project.id==c.project_id,Project.tenant_id==user.tenant_id).first()
+    if not p:raise HTTPException(403)
+    if c.stage in {"QUALIFIED","READY_TO_DEPLOY","INTERESTED"}:
+        c.stage="RESERVED"
+        db.commit()
+        audit_event(db,user,"CANDIDATE_RESERVED","candidate",str(c.id),f"project={p.name}; worker={c.worker.full_name}")
+    return RedirectResponse(f"/projects/{p.id}?reserved=1",303)
+
+@app.post("/candidates/{candidate_id}/unreserve")
+def candidate_unreserve(candidate_id:int,request:Request,db:Session=Depends(get_db)):
+    user=current_user(request,db)
+    if not user:return RedirectResponse("/login",303)
+    require_roles(user,"admin","recruiter")
+    c=db.query(ProjectCandidate).filter(ProjectCandidate.id==candidate_id).first()
+    if not c:raise HTTPException(404)
+    p=db.query(Project).filter(Project.id==c.project_id,Project.tenant_id==user.tenant_id).first()
+    if not p:raise HTTPException(403)
+    if c.stage=="RESERVED":
+        c.stage="QUALIFIED"
+        db.commit()
+        audit_event(db,user,"CANDIDATE_UNRESERVED","candidate",str(c.id),f"project={p.name}; worker={c.worker.full_name}")
+    return RedirectResponse(f"/projects/{p.id}",303)
+
+@app.post("/projects/{project_id}/deployment-check")
+def project_deployment_check(project_id:int,request:Request,db:Session=Depends(get_db)):
+    user=current_user(request,db)
+    if not user:return RedirectResponse("/login",303)
+    require_roles(user,"admin","recruiter")
+    p=db.query(Project).filter(Project.id==project_id,Project.tenant_id==user.tenant_id).first()
+    if not p:raise HTTPException(404)
+    candidates=db.query(ProjectCandidate).filter(ProjectCandidate.project_id==p.id,ProjectCandidate.stage.in_(["QUALIFIED","RESERVED"])).all()
+    promoted=0
+    blocked=0
+    for c in candidates:
+        screening_ok=(c.screening_status=="COMPLETE")
+        worker_ok=bool(getattr(c.worker,"ready_to_deploy",False))
+        if screening_ok and worker_ok:
+            c.stage="READY_TO_DEPLOY"
+            promoted+=1
+        else:
+            blocked+=1
+    db.commit()
+    audit_event(db,user,"DEPLOYMENT_READINESS_CHECK","project",str(p.id),f"promoted={promoted}; blocked={blocked}")
+    return RedirectResponse(f"/projects/{p.id}?deployment_check=1",303)
+
+@app.post("/projects/{project_id}/follow-ups")
+def project_followups(project_id:int,request:Request,db:Session=Depends(get_db)):
+    user=current_user(request,db)
+    if not user:return RedirectResponse("/login",303)
+    require_roles(user,"admin","recruiter")
+    p=db.query(Project).filter(Project.id==project_id,Project.tenant_id==user.tenant_id).first()
+    if not p:raise HTTPException(404)
+    candidates=db.query(ProjectCandidate).filter(ProjectCandidate.project_id==p.id,ProjectCandidate.stage=="CONTACTED").order_by(ProjectCandidate.match_score.desc()).all()
+    cutoff=datetime.utcnow()-timedelta(hours=24)
+    sent=0
+    skipped=0
+    for c in candidates:
+        last=(db.query(Message).filter(Message.candidate_id==c.id,Message.direction=="OUT").order_by(Message.created_at.desc()).first())
+        if last and last.created_at and last.created_at>cutoff:
+            skipped+=1
+            continue
+        m=send_candidate_offer(db,c)
+        if m.provider_status.startswith("SENT"):
+            m.body="Follow-up: "+m.body
+            sent+=1
+    db.commit()
+    audit_event(db,user,"PROJECT_FOLLOWUPS","project",str(p.id),f"sent={sent}; skipped_recent={skipped}")
+    return RedirectResponse(f"/projects/{p.id}?followups=1",303)
