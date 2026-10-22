@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0d2334"><title>{% block title %}Euroteams Workforce Live{% endblock %}</title><link rel="stylesheet" href="/static/styles.css"></head>
+<body>
+{% if user %}
+<aside class="sidebar">
+  <div class="brand-wrap"><div class="brand-mark">E</div><div class="brand-copy"><div class="brand-company">EUROTEAMS</div><div class="brand-product">Workforce Live</div></div></div>
+  <div class="tenant"><strong>{{ user.full_name }}</strong><small>{{ user.role|upper }} · EUROTEAMS GROUP</small></div>
+  <div class="nav-label">Workspace</div>
+  <nav>
+    <a class="{% if request.url.path=='/' %}active{% endif %}" href="/"><span class="nav-icon">◫</span>Dashboard</a>
+    <a class="{% if request.url.path.startswith('/workers') %}active{% endif %}" href="/workers"><span class="nav-icon">◉</span>Workers</a>
+    <a class="{% if request.url.path.startswith('/projects') %}active{% endif %}" href="/projects"><span class="nav-icon">◇</span>Projects</a>
+    <a class="{% if request.url.path.startswith('/crews') %}active{% endif %}" href="/crews"><span class="nav-icon">◎</span>Crews</a>
+    <a class="{% if request.url.path.startswith('/operations') %}active{% endif %}" href="/operations"><span class="nav-icon">⌁</span>Operations</a>
+    <div class="nav-label">Control</div>
+    <a class="{% if request.url.path.startswith('/consents') %}active{% endif %}" href="/consents"><span class="nav-icon">✓</span>Consent Center</a>
+    <a class="{% if request.url.path.startswith('/outbox') %}active{% endif %}" href="/outbox"><span class="nav-icon">↗</span>Outbox</a>
+    {% if user and user.role=='admin' %}<a class="{% if request.url.path.startswith('/team') %}active{% endif %}" href="/team"><span class="nav-icon">♙</span>Team</a>{% endif %}
+    <a class="{% if request.url.path.startswith('/audit') %}active{% endif %}" href="/audit"><span class="nav-icon">≡</span>Audit log</a>
+    <a href="/logout"><span class="nav-icon">↪</span>Log out</a>
+  </nav>
+  <div class="sidebar-foot">Euroteams Group · Workforce operations platform</div>
+</aside>
+{% endif %}
+<main class="{% if user %}main{% else %}main-public{% endif %}">{% block content %}{% endblock %}</main>
+</body></html>
