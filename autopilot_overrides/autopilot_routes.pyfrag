@@ -1,6 +1,59 @@
 
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
+
+
+def _meta_get(notes: str, key: str):
+    prefix=key+"="
+    for part in (notes or "").split("\n"):
+        if part.startswith(prefix):
+            return part[len(prefix):].strip()
+    return ""
+
+
+def _meta_set(notes: str, key: str, value: str):
+    prefix=key+"="
+    parts=[p for p in (notes or "").split("\n") if p and not p.startswith(prefix)]
+    if value:
+        parts.append(prefix+value)
+    return "\n".join(parts)
+
+
+def _reservation_until(c):
+    raw=_meta_get(c.notes,"RESERVE_UNTIL")
+    if not raw:return None
+    try:return datetime.fromisoformat(raw)
+    except Exception:return None
+
+
+def _expire_reservation(c):
+    until=_reservation_until(c)
+    if c.stage=="RESERVED" and until and until < datetime.utcnow():
+        c.stage="QUALIFIED"
+        c.notes=_meta_set(c.notes,"RESERVE_UNTIL","")
+        c.notes=_meta_set(c.notes,"RESERVATION_STATE","EXPIRED")
+        return True
+    return False
+
+
+def _deployment_blockers(db,c,p):
+    w=c.worker
+    blockers=[]
+    if c.screening_status!="COMPLETE": blockers.append("Screening not complete")
+    if not getattr(w,"identity_verified",False): blockers.append("Identity not verified")
+    if not getattr(w,"skills_verified",False): blockers.append("Skills not verified")
+    if not getattr(w,"documents_verified",False): blockers.append("Documents not verified")
+    if getattr(w,"availability_status","") not in {"AVAILABLE NOW","AVAILABLE FROM DATE","OPEN TO OFFERS"}: blockers.append("Availability not confirmed")
+    if getattr(w,"availability_status","")=="AVAILABLE FROM DATE" and getattr(w,"available_from",None) and w.available_from>p.start_date:
+        blockers.append("Available after project start")
+    if p.citizenship_requirement=="EU" and not getattr(w,"eu_citizen",False): blockers.append("EU citizenship requirement not met")
+    docs=db.query(WorkerDocument).filter(WorkerDocument.worker_id==w.id).all()
+    expired=[d for d in docs if d.expires_on and d.expires_on < p.start_date]
+    if expired: blockers.append("Document expires before project start")
+    if p.required_certificates and not docs: blockers.append("Required certificates/documents missing")
+    if not getattr(w,"ready_to_deploy",False): blockers.append("Worker profile not Ready to Deploy")
+    return blockers
+
 
 @app.post("/projects/{project_id}/autopilot")
 def project_autopilot(project_id:int,request:Request,db:Session=Depends(get_db)):
@@ -10,6 +63,10 @@ def project_autopilot(project_id:int,request:Request,db:Session=Depends(get_db))
     p=db.query(Project).filter(Project.id==project_id,Project.tenant_id==user.tenant_id).first()
     if not p:raise HTTPException(404)
     candidates=db.query(ProjectCandidate).filter(ProjectCandidate.project_id==p.id).order_by(ProjectCandidate.match_score.desc()).all()
+    expired=0
+    for c in candidates:
+        if _expire_reservation(c): expired+=1
+    db.commit()
     if not candidates:
         start_recruitment(db,p,tenant_id=user.tenant_id,limit=200,auto_outreach=False)
         candidates=db.query(ProjectCandidate).filter(ProjectCandidate.project_id==p.id).order_by(ProjectCandidate.match_score.desc()).all()
@@ -35,8 +92,9 @@ def project_autopilot(project_id:int,request:Request,db:Session=Depends(get_db))
         m=send_candidate_offer(db,c)
         if m.provider_status.startswith("SENT"):
             sent+=1
-    audit_event(db,user,"RECRUITMENT_AUTOPILOT","project",str(p.id),f"offers={sent}; screenings={created_screenings}; ready={ready}; reserved={reserved}; qualified={qualified}")
+    audit_event(db,user,"RECRUITMENT_AUTOPILOT","project",str(p.id),f"offers={sent}; screenings={created_screenings}; ready={ready}; reserved={reserved}; expired_reservations={expired}; qualified={qualified}")
     return RedirectResponse(f"/projects/{p.id}?autopilot=1",303)
+
 
 @app.post("/candidates/{candidate_id}/reserve")
 def candidate_reserve(candidate_id:int,request:Request,db:Session=Depends(get_db)):
@@ -47,11 +105,15 @@ def candidate_reserve(candidate_id:int,request:Request,db:Session=Depends(get_db
     if not c:raise HTTPException(404)
     p=db.query(Project).filter(Project.id==c.project_id,Project.tenant_id==user.tenant_id).first()
     if not p:raise HTTPException(403)
-    if c.stage in {"QUALIFIED","READY_TO_DEPLOY","INTERESTED"}:
+    if c.stage in {"QUALIFIED","READY_TO_DEPLOY","INTERESTED","RESERVED"}:
+        until=datetime.utcnow()+timedelta(hours=48)
         c.stage="RESERVED"
+        c.notes=_meta_set(c.notes,"RESERVE_UNTIL",until.isoformat(timespec="minutes"))
+        c.notes=_meta_set(c.notes,"RESERVATION_STATE","ACTIVE")
         db.commit()
-        audit_event(db,user,"CANDIDATE_RESERVED","candidate",str(c.id),f"project={p.name}; worker={c.worker.full_name}")
+        audit_event(db,user,"CANDIDATE_RESERVED_48H","candidate",str(c.id),f"project={p.name}; worker={c.worker.full_name}; until={until.isoformat(timespec='minutes')}")
     return RedirectResponse(f"/projects/{p.id}?reserved=1",303)
+
 
 @app.post("/candidates/{candidate_id}/unreserve")
 def candidate_unreserve(candidate_id:int,request:Request,db:Session=Depends(get_db)):
@@ -64,9 +126,34 @@ def candidate_unreserve(candidate_id:int,request:Request,db:Session=Depends(get_
     if not p:raise HTTPException(403)
     if c.stage=="RESERVED":
         c.stage="QUALIFIED"
+        c.notes=_meta_set(c.notes,"RESERVE_UNTIL","")
+        c.notes=_meta_set(c.notes,"RESERVATION_STATE","RELEASED")
         db.commit()
         audit_event(db,user,"CANDIDATE_UNRESERVED","candidate",str(c.id),f"project={p.name}; worker={c.worker.full_name}")
     return RedirectResponse(f"/projects/{p.id}",303)
+
+
+@app.post("/candidates/{candidate_id}/readiness")
+def candidate_readiness(candidate_id:int,request:Request,db:Session=Depends(get_db)):
+    user=current_user(request,db)
+    if not user:return RedirectResponse("/login",303)
+    require_roles(user,"admin","recruiter")
+    c=db.query(ProjectCandidate).filter(ProjectCandidate.id==candidate_id).first()
+    if not c:raise HTTPException(404)
+    p=db.query(Project).filter(Project.id==c.project_id,Project.tenant_id==user.tenant_id).first()
+    if not p:raise HTTPException(403)
+    _expire_reservation(c)
+    blockers=_deployment_blockers(db,c,p)
+    c.notes=_meta_set(c.notes,"BLOCKERS"," | ".join(blockers) if blockers else "NONE")
+    c.notes=_meta_set(c.notes,"READINESS_CHECKED_AT",datetime.utcnow().isoformat(timespec="minutes"))
+    if not blockers:
+        c.stage="READY_TO_DEPLOY"
+        c.notes=_meta_set(c.notes,"RESERVE_UNTIL","")
+        c.notes=_meta_set(c.notes,"RESERVATION_STATE","COMPLETED")
+    db.commit()
+    audit_event(db,user,"CANDIDATE_READINESS_CHECK","candidate",str(c.id),f"project={p.name}; blockers={'; '.join(blockers) if blockers else 'NONE'}")
+    return RedirectResponse(f"/projects/{p.id}?readiness=1",303)
+
 
 @app.post("/projects/{project_id}/deployment-check")
 def project_deployment_check(project_id:int,request:Request,db:Session=Depends(get_db)):
@@ -75,20 +162,23 @@ def project_deployment_check(project_id:int,request:Request,db:Session=Depends(g
     require_roles(user,"admin","recruiter")
     p=db.query(Project).filter(Project.id==project_id,Project.tenant_id==user.tenant_id).first()
     if not p:raise HTTPException(404)
-    candidates=db.query(ProjectCandidate).filter(ProjectCandidate.project_id==p.id,ProjectCandidate.stage.in_(["QUALIFIED","RESERVED"])).all()
-    promoted=0
-    blocked=0
+    candidates=db.query(ProjectCandidate).filter(ProjectCandidate.project_id==p.id,ProjectCandidate.stage.in_(["QUALIFIED","RESERVED","INTERESTED"])).all()
+    promoted=0; blocked=0; expired=0
     for c in candidates:
-        screening_ok=(c.screening_status=="COMPLETE")
-        worker_ok=bool(getattr(c.worker,"ready_to_deploy",False))
-        if screening_ok and worker_ok:
+        if _expire_reservation(c): expired+=1
+        blockers=_deployment_blockers(db,c,p)
+        c.notes=_meta_set(c.notes,"BLOCKERS"," | ".join(blockers) if blockers else "NONE")
+        c.notes=_meta_set(c.notes,"READINESS_CHECKED_AT",datetime.utcnow().isoformat(timespec="minutes"))
+        if not blockers:
             c.stage="READY_TO_DEPLOY"
+            c.notes=_meta_set(c.notes,"RESERVE_UNTIL","")
             promoted+=1
         else:
             blocked+=1
     db.commit()
-    audit_event(db,user,"DEPLOYMENT_READINESS_CHECK","project",str(p.id),f"promoted={promoted}; blocked={blocked}")
+    audit_event(db,user,"DEPLOYMENT_READINESS_CHECK","project",str(p.id),f"promoted={promoted}; blocked={blocked}; expired_reservations={expired}")
     return RedirectResponse(f"/projects/{p.id}?deployment_check=1",303)
+
 
 @app.post("/projects/{project_id}/follow-ups")
 def project_followups(project_id:int,request:Request,db:Session=Depends(get_db)):
@@ -99,8 +189,7 @@ def project_followups(project_id:int,request:Request,db:Session=Depends(get_db))
     if not p:raise HTTPException(404)
     candidates=db.query(ProjectCandidate).filter(ProjectCandidate.project_id==p.id,ProjectCandidate.stage=="CONTACTED").order_by(ProjectCandidate.match_score.desc()).all()
     cutoff=datetime.utcnow()-timedelta(hours=24)
-    sent=0
-    skipped=0
+    sent=0; skipped=0
     for c in candidates:
         last=(db.query(Message).filter(Message.candidate_id==c.id,Message.direction=="OUT").order_by(Message.created_at.desc()).first())
         if last and last.created_at and last.created_at>cutoff:
