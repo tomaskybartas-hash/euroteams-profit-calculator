@@ -1,5 +1,4 @@
 # WORKFORCE_COLLECTOR_ROUTES_V1
-# Injected by sitecustomize into app/main.py on the collector preview branch.
 
 @app.get("/collector", response_class=HTMLResponse)
 def collector_center(request: Request, db: Session = Depends(get_db)):
@@ -10,10 +9,16 @@ def collector_center(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(request,"collector.html",page_ctx(request,user,projects=projects,result=None))
 
 @app.post("/collector/import", response_class=HTMLResponse)
-async def collector_import(request: Request, project_id:int=Form(...), source:str=Form(...), csv_file:UploadFile=File(...), db:Session=Depends(get_db)):
+async def collector_import(request: Request, db:Session=Depends(get_db)):
     user=current_user(request,db)
     if not user:return RedirectResponse("/login",303)
     require_roles(user,"admin","recruiter")
+    form=await request.form()
+    try:project_id=int(str(form.get("project_id","0")))
+    except ValueError:raise HTTPException(400,detail="Invalid project")
+    source=str(form.get("source","")).strip() or "manual-approved-import"
+    csv_file=form.get("csv_file")
+    if not csv_file or not hasattr(csv_file,"read"):raise HTTPException(400,detail="CSV file required")
     project=db.query(Project).filter(Project.id==project_id,Project.tenant_id==user.tenant_id).first()
     if not project:raise HTTPException(404)
     raw=await csv_file.read()
@@ -22,10 +27,9 @@ async def collector_import(request: Request, project_id:int=Form(...), source:st
     except UnicodeDecodeError:raise HTTPException(400,detail="CSV must be UTF-8")
     from collector.import_pipeline import records_from_csv
     from collector.workforce_bridge import upsert_workers,create_project_candidates
-    records,report=records_from_csv(text,source=source.strip() or "manual-approved-import",consent_basis="SOURCE_PERMITTED")
+    records,report=records_from_csv(text,source=source,consent_basis="SOURCE_PERMITTED")
     persisted=upsert_workers(db,Worker,records,user.tenant_id)
-    worker_by_fingerprint={}
-    for candidate,worker in zip(records,persisted["workers"]):worker_by_fingerprint[candidate.fingerprint]=worker
+    worker_by_fingerprint={candidate.fingerprint:worker for candidate,worker in zip(records,persisted["workers"])}
     matched=create_project_candidates(db,ProjectCandidate,project,worker_by_fingerprint,records,user.tenant_id)
     audit_event(db,user,"COLLECTOR_IMPORT","project",str(project.id),f"source={source}; rows={report.total_rows}; accepted={report.accepted_rows}; duplicates={report.duplicates_removed}; candidates={matched['created']}")
     projects=db.query(Project).filter(Project.tenant_id==user.tenant_id).order_by(Project.id.desc()).limit(100).all()
@@ -39,13 +43,16 @@ def collector_match_existing(project_id:int,request:Request,db:Session=Depends(g
     require_roles(user,"admin","recruiter")
     project=db.query(Project).filter(Project.id==project_id,Project.tenant_id==user.tenant_id).first()
     if not project:raise HTTPException(404)
-    # Existing-worker rematching is intentionally conservative: use fields already verified in Workforce Live.
     from collector.worker_collector import CandidateRecord
     from collector.workforce_bridge import create_project_candidates
     workers=db.query(Worker).filter(Worker.tenant_id==user.tenant_id).all()
     records=[];worker_map={}
     for w in workers:
-        c=CandidateRecord(full_name=getattr(w,"full_name","") or "",country=getattr(w,"country","") or "",role=getattr(w,"profession",None) or getattr(w,"role","") or "",source="workforce-live",email=getattr(w,"email","") or "",phone=getattr(w,"phone","") or "",years_experience=float(getattr(w,"years_experience",0) or 0),certificates=[],languages=[],eu_citizen=getattr(w,"eu_citizen",None),availability_status=getattr(w,"availability_status","") or "UNKNOWN",available_from=getattr(w,"available_from",None),desired_net_hourly=getattr(w,"desired_net_hourly",None))
+        certs=getattr(w,"certificates",[]) or []
+        langs=getattr(w,"languages",[]) or []
+        if isinstance(certs,str):certs=[x.strip() for x in certs.replace(";",",").split(",") if x.strip()]
+        if isinstance(langs,str):langs=[x.strip() for x in langs.replace(";",",").split(",") if x.strip()]
+        c=CandidateRecord(full_name=getattr(w,"full_name","") or "",country=getattr(w,"country","") or "",role=getattr(w,"profession",None) or getattr(w,"role","") or "",source="workforce-live",email=getattr(w,"email","") or "",phone=getattr(w,"phone","") or "",years_experience=float(getattr(w,"years_experience",0) or 0),certificates=certs,languages=langs,eu_citizen=getattr(w,"eu_citizen",None),availability_status=getattr(w,"availability_status","") or "UNKNOWN",available_from=getattr(w,"available_from",None),desired_net_hourly=getattr(w,"desired_net_hourly",None))
         records.append(c);worker_map[c.fingerprint]=w
     matched=create_project_candidates(db,ProjectCandidate,project,worker_map,records,user.tenant_id)
     audit_event(db,user,"COLLECTOR_REMATCH","project",str(project.id),f"ranked={matched['ranked']}; created={matched['created']}")
