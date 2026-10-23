@@ -1,5 +1,13 @@
 # WORKFORCE_COLLECTOR_ROUTES_V1
 
+def _collector_values(obj, names):
+    for name in names:
+        value=getattr(obj,name,None)
+        if value:
+            if isinstance(value,(list,tuple,set)):return [str(x).strip() for x in value if str(x).strip()]
+            return [x.strip() for x in str(value).replace(";",",").split(",") if x.strip()]
+    return []
+
 @app.get("/collector/health")
 def collector_health():
     from collector.source_registry import default_registry
@@ -14,7 +22,8 @@ def collector_center(request: Request, db: Session = Depends(get_db)):
     from collector.source_registry import default_registry
     sources=default_registry().enabled()
     projects=db.query(Project).filter(Project.tenant_id==user.tenant_id).order_by(Project.id.desc()).limit(100).all()
-    return templates.TemplateResponse(request,"collector.html",page_ctx(request,user,projects=projects,sources=sources,result=None))
+    selected_project_id=request.query_params.get("project_id")
+    return templates.TemplateResponse(request,"collector.html",page_ctx(request,user,projects=projects,sources=sources,result=None,selected_project_id=selected_project_id))
 
 @app.post("/collector/import", response_class=HTMLResponse)
 async def collector_import(request: Request, db:Session=Depends(get_db)):
@@ -43,11 +52,11 @@ async def collector_import(request: Request, db:Session=Depends(get_db)):
     persisted=upsert_workers(db,Worker,records,user.tenant_id)
     worker_by_fingerprint={candidate.fingerprint:worker for candidate,worker in zip(records,persisted["workers"])}
     matched=create_project_candidates(db,ProjectCandidate,project,worker_by_fingerprint,records,user.tenant_id)
-    audit_event(db,user,"COLLECTOR_IMPORT","project",str(project.id),f"source={source_cfg.key}; rows={report.total_rows}; accepted={report.accepted_rows}; duplicates={report.duplicates_removed}; candidates={matched['created']}")
+    audit_event(db,user,"COLLECTOR_IMPORT","project",str(project.id),f"source={source_cfg.key}; rows={report.total_rows}; accepted={report.accepted_rows}; duplicates={report.duplicates_removed}; candidates={matched['created']}; refreshed={matched['refreshed']}")
     sources=registry.enabled()
     projects=db.query(Project).filter(Project.tenant_id==user.tenant_id).order_by(Project.id.desc()).limit(100).all()
     result={"report":report.to_dict(),"persisted":{"created":persisted["created"],"updated":persisted["updated"]},"matched":matched,"project":project,"source":source_cfg}
-    return templates.TemplateResponse(request,"collector.html",page_ctx(request,user,projects=projects,sources=sources,result=result))
+    return templates.TemplateResponse(request,"collector.html",page_ctx(request,user,projects=projects,sources=sources,result=result,selected_project_id=str(project.id)))
 
 @app.post("/projects/{project_id}/collector/match")
 def collector_match_existing(project_id:int,request:Request,db:Session=Depends(get_db)):
@@ -61,12 +70,10 @@ def collector_match_existing(project_id:int,request:Request,db:Session=Depends(g
     workers=db.query(Worker).filter(Worker.tenant_id==user.tenant_id).all()
     records=[];worker_map={}
     for w in workers:
-        certs=getattr(w,"certificates",[]) or []
-        langs=getattr(w,"languages",[]) or []
-        if isinstance(certs,str):certs=[x.strip() for x in certs.replace(";",",").split(",") if x.strip()]
-        if isinstance(langs,str):langs=[x.strip() for x in langs.replace(";",",").split(",") if x.strip()]
+        certs=_collector_values(w,("certificates","certifications","certs"))
+        langs=_collector_values(w,("languages","language_skills"))
         c=CandidateRecord(full_name=getattr(w,"full_name","") or "",country=getattr(w,"country","") or "",role=getattr(w,"profession",None) or getattr(w,"role","") or "",source="workforce-live",email=getattr(w,"email","") or "",phone=getattr(w,"phone","") or "",years_experience=float(getattr(w,"years_experience",0) or 0),certificates=certs,languages=langs,eu_citizen=getattr(w,"eu_citizen",None),availability_status=getattr(w,"availability_status","") or "UNKNOWN",available_from=getattr(w,"available_from",None),desired_net_hourly=getattr(w,"desired_net_hourly",None))
         records.append(c);worker_map[c.fingerprint]=w
     matched=create_project_candidates(db,ProjectCandidate,project,worker_map,records,user.tenant_id)
-    audit_event(db,user,"COLLECTOR_REMATCH","project",str(project.id),f"ranked={matched['ranked']}; created={matched['created']}")
-    return RedirectResponse(f"/projects/{project.id}?collector_created={matched['created']}",303)
+    audit_event(db,user,"COLLECTOR_REMATCH","project",str(project.id),f"ranked={matched['ranked']}; created={matched['created']}; refreshed={matched['refreshed']}; blocked={matched['blocked']}")
+    return RedirectResponse(f"/projects/{project.id}?collector_created={matched['created']}&collector_refreshed={matched['refreshed']}",303)
