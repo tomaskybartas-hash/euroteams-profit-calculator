@@ -1,0 +1,28 @@
+name: Collector Live Smoke
+on:
+  push:
+    branches: [workforce-worker-collector-v1]
+    paths: ['.github/workflows/collector-live-smoke.yml']
+  workflow_dispatch:
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for and verify live Collector
+        run: |
+          for i in {1..12}; do
+            if curl -fsS --max-time 20 https://euroteams-workforce-collector-preview.onrender.com/collector/health -o health.json; then
+              python - <<'PY'
+          import json
+          p=json.load(open('health.json'))
+          assert p['ok'] is True
+          assert p['module']=='worker-collector-v1'
+          assert 'euroteams-existing' in p['enabled_sources']
+          print(p)
+          PY
+              curl -fsS --max-time 20 https://euroteams-workforce-collector-preview.onrender.com/login | grep -q 'Euroteams'
+              exit 0
+            fi
+            sleep 10
+          done
+          exit 1
