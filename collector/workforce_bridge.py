@@ -5,7 +5,7 @@ The bridge uses conservative field assignment because Workforce Live models evol
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Iterable
 
 from .worker_collector import CandidateRecord, ProjectNeed, shortlist
@@ -14,6 +14,14 @@ from .worker_collector import CandidateRecord, ProjectNeed, shortlist
 def _set_if_present(obj, name, value):
     if hasattr(obj, name) and value is not None:
         setattr(obj, name, value)
+
+
+def _set_first_present(obj, names, value):
+    for name in names:
+        if hasattr(obj, name):
+            setattr(obj, name, value)
+            return name
+    return None
 
 
 def _find_worker(db, Worker, candidate: CandidateRecord, tenant_id: int):
@@ -30,7 +38,7 @@ def _find_worker(db, Worker, candidate: CandidateRecord, tenant_id: int):
 
 
 def upsert_workers(db, Worker, records: Iterable[CandidateRecord], tenant_id: int) -> dict:
-    """Create/update Worker rows. Returns counters and persisted workers."""
+    """Create/update Worker rows and preserve match-critical collector data."""
     created = updated = 0
     persisted = []
     for candidate in records:
@@ -53,10 +61,13 @@ def upsert_workers(db, Worker, records: Iterable[CandidateRecord], tenant_id: in
         _set_if_present(worker, "available_from", candidate.available_from)
         _set_if_present(worker, "desired_net_hourly", candidate.desired_net_hourly)
         _set_if_present(worker, "years_experience", candidate.years_experience)
+        _set_first_present(worker, ("certificates", "certifications", "certs"), ", ".join(candidate.certificates))
+        _set_first_present(worker, ("languages", "language_skills"), ", ".join(candidate.languages))
         _set_if_present(worker, "source", candidate.source)
         _set_if_present(worker, "source_url", candidate.source_url)
         _set_if_present(worker, "collector_fingerprint", candidate.fingerprint)
-        _set_if_present(worker, "updated_at", datetime.utcnow())
+        _set_if_present(worker, "consent_basis", candidate.consent_basis)
+        _set_if_present(worker, "updated_at", datetime.now(timezone.utc))
         persisted.append(worker)
     db.commit()
     for worker in persisted:
@@ -89,9 +100,9 @@ def project_need_from_model(project) -> ProjectNeed:
 
 
 def create_project_candidates(db, ProjectCandidate, project, worker_by_fingerprint: dict, records, tenant_id: int) -> dict:
-    """Run collector ranking and persist missing ProjectCandidate rows."""
+    """Rank candidates and create or refresh ProjectCandidate rows."""
     results = shortlist(records, project_need_from_model(project), limit=500)
-    created = existing = blocked = 0
+    created = existing = refreshed = blocked = 0
     for result in results:
         worker = worker_by_fingerprint.get(result.fingerprint)
         if worker is None or not getattr(worker, "id", None):
@@ -100,18 +111,22 @@ def create_project_candidates(db, ProjectCandidate, project, worker_by_fingerpri
             ProjectCandidate.project_id == project.id,
             ProjectCandidate.worker_id == worker.id,
         ).first()
-        if row:
+        is_new = row is None
+        if is_new:
+            row = ProjectCandidate(project_id=project.id, worker_id=worker.id)
+            _set_if_present(row, "tenant_id", tenant_id)
+            db.add(row)
+            created += 1
+        else:
             existing += 1
-            continue
-        row = ProjectCandidate(project_id=project.id, worker_id=worker.id)
-        _set_if_present(row, "tenant_id", tenant_id)
+            refreshed += 1
         _set_if_present(row, "match_score", result.score)
         _set_if_present(row, "eligibility", "PASS" if result.eligible else "BLOCKED")
-        _set_if_present(row, "stage", "MATCHED")
+        current_stage = str(getattr(row, "stage", "") or "").upper()
+        if is_new or current_stage in {"", "MATCHED", "BLOCKED"}:
+            _set_if_present(row, "stage", "MATCHED" if result.eligible else "BLOCKED")
         _set_if_present(row, "notes", "COLLECTOR_REASONS=" + " | ".join(result.reasons) + "\nCOLLECTOR_BLOCKERS=" + (" | ".join(result.blockers) or "NONE"))
-        db.add(row)
-        created += 1
         if not result.eligible:
             blocked += 1
     db.commit()
-    return {"created": created, "existing": existing, "blocked": blocked, "ranked": len(results)}
+    return {"created": created, "existing": existing, "refreshed": refreshed, "blocked": blocked, "ranked": len(results)}
