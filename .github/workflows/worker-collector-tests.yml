@@ -3,9 +3,9 @@ name: Workforce Worker Collector Tests
 on:
   push:
     branches: [workforce-worker-collector-v1]
-    paths: ['collector/**','tests/test_worker_collector.py','tests/test_import_pipeline.py','tests/test_source_registry.py','tests/test_runtime_install.py','tests/test_collector_route_contract.py','.github/workflows/worker-collector-tests.yml']
+    paths: ['collector/**','tests/test_worker_collector.py','tests/test_import_pipeline.py','tests/test_source_registry.py','tests/test_runtime_install.py','tests/test_collector_route_contract.py','tests/test_workforce_bridge_refresh.py','.github/workflows/worker-collector-tests.yml']
   pull_request:
-    paths: ['collector/**','tests/test_worker_collector.py','tests/test_import_pipeline.py','tests/test_source_registry.py','tests/test_runtime_install.py','tests/test_collector_route_contract.py']
+    paths: ['collector/**','tests/test_worker_collector.py','tests/test_import_pipeline.py','tests/test_source_registry.py','tests/test_runtime_install.py','tests/test_collector_route_contract.py','tests/test_workforce_bridge_refresh.py']
 
 jobs:
   test:
@@ -20,4 +20,4 @@ jobs:
       - name: Compile collector
         run: python -m compileall -q collector
       - name: Run collector tests
-        run: python -m pytest -q tests/test_worker_collector.py tests/test_import_pipeline.py tests/test_source_registry.py tests/test_runtime_install.py tests/test_collector_route_contract.py
+        run: python -m pytest -q tests/test_worker_collector.py tests/test_import_pipeline.py tests/test_source_registry.py tests/test_runtime_install.py tests/test_collector_route_contract.py tests/test_workforce_bridge_refresh.py
