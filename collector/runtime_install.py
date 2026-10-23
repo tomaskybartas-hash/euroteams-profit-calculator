@@ -1,5 +1,6 @@
 """Install Worker Collector UI/routes into the extracted Workforce Live app at build time."""
 from pathlib import Path
+import shutil
 
 
 def _ensure_fastapi_upload_imports(main: str) -> str:
@@ -19,7 +20,8 @@ def _ensure_fastapi_upload_imports(main: str) -> str:
 
 def install(app_dir: Path, repo_root: Path) -> bool:
     main_path=app_dir/"main.py";templates=app_dir/"templates";base=templates/"base.html"
-    routes=repo_root/"collector"/"runtime_routes.pyfrag";template=repo_root/"collector"/"collector.html"
+    source_package=repo_root/"collector"
+    routes=source_package/"runtime_routes.pyfrag";template=source_package/"collector.html"
     if not main_path.exists() or not routes.exists() or not template.exists():return False
     main=main_path.read_text()
     marker="# WORKFORCE_COLLECTOR_ROUTES_V1"
@@ -32,6 +34,10 @@ def install(app_dir: Path, repo_root: Path) -> bool:
         main_path.write_text(main)
     templates.mkdir(parents=True,exist_ok=True)
     (templates/"collector.html").write_text(template.read_text())
+    runtime_root=app_dir.parent
+    runtime_package=runtime_root/"collector"
+    if source_package.resolve()!=runtime_package.resolve():
+        shutil.copytree(source_package,runtime_package,dirs_exist_ok=True,ignore=shutil.ignore_patterns("__pycache__","*.pyc"))
     if base.exists():
         text=base.read_text()
         if 'href="/collector"' not in text:
