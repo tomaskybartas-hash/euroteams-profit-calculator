@@ -3,12 +3,12 @@ name: Workforce Worker Collector Tests
 on:
   push:
     branches: [workforce-worker-collector-v1]
-    paths: ['collector/**','tests/test_worker_collector.py','tests/test_import_pipeline.py','tests/test_source_registry.py','tests/test_runtime_install.py','tests/test_collector_route_contract.py','tests/test_workforce_bridge_refresh.py','.github/workflows/worker-collector-tests.yml']
+    paths: ['collector/**','tests/**','.github/workflows/worker-collector-tests.yml']
   pull_request:
-    paths: ['collector/**','tests/test_worker_collector.py','tests/test_import_pipeline.py','tests/test_source_registry.py','tests/test_runtime_install.py','tests/test_collector_route_contract.py','tests/test_workforce_bridge_refresh.py']
+    paths: ['collector/**','tests/**','.github/workflows/worker-collector-tests.yml']
 
 jobs:
-  test:
+  unit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,3 +21,31 @@ jobs:
         run: python -m compileall -q collector
       - name: Run collector tests
         run: python -m pytest -q tests/test_worker_collector.py tests/test_import_pipeline.py tests/test_source_registry.py tests/test_runtime_install.py tests/test_collector_route_contract.py tests/test_workforce_bridge_refresh.py
+
+  assembled-app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Assemble Workforce Live exactly like preview
+        run: |
+          cat wlprod_clean.part00 wlprod_clean.part01 wlprod_clean.part02 wlprod_clean.part03 wlprod_clean.part04 > workforce_live_prod_clean.b64
+          base64 -d workforce_live_prod_clean.b64 > workforce_live_prod_clean.zip
+          unzip -o workforce_live_prod_clean.zip
+          cp ui_overrides/base.html workforce_live_prod_clean/app/templates/base.html
+          cp ui_overrides/dashboard.html workforce_live_prod_clean/app/templates/dashboard.html
+          cp ui_overrides/login.html workforce_live_prod_clean/app/templates/login.html
+          cp ui_overrides/styles.css workforce_live_prod_clean/app/static/styles.css
+          cat autopilot_overrides/project.css >> workforce_live_prod_clean/app/static/styles.css
+          cp autopilot_overrides/project_detail.html workforce_live_prod_clean/app/templates/project_detail.html
+          cat autopilot_overrides/autopilot_routes.pyfrag >> workforce_live_prod_clean/app/main.py
+          cp -r collector workforce_live_prod_clean/collector
+          cp collector/collector.html workforce_live_prod_clean/app/templates/collector.html
+          cat collector/runtime_routes.pyfrag >> workforce_live_prod_clean/app/main.py
+      - name: Install assembled app
+        run: python -m pip install -r workforce_live_prod_clean/requirements.txt
+      - name: Smoke test assembled app
+        working-directory: workforce_live_prod_clean
+        run: python -m pytest -q ../tests/test_built_app_smoke.py
