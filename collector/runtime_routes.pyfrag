@@ -1,0 +1,163 @@
+# WORKFORCE_COLLECTOR_ROUTES_V1
+
+@app.on_event("startup")
+def _collector_bootstrap_preview_admin():
+    """Create the configured preview admin once; never overwrite an existing password."""
+    from collector.bootstrap_admin import configured_admin
+    cfg=configured_admin()
+    if not cfg["enabled"]:
+        print("WORKFORCE_ADMIN_BOOTSTRAP=disabled")
+        return
+    db_gen=get_db()
+    db=next(db_gen)
+    try:
+        existing=db.query(AppUser).filter(AppUser.email==cfg["email"]).first()
+        if existing:
+            print(f"WORKFORCE_ADMIN_BOOTSTRAP=existing email={cfg['email']}")
+            return
+        admin=AppUser(tenant_id=cfg["tenant_id"],email=cfg["email"],full_name=cfg["name"],password_hash=hash_password(cfg["password"]),role="admin",active=True)
+        db.add(admin);db.commit()
+        print(f"WORKFORCE_ADMIN_BOOTSTRAP=created email={cfg['email']}")
+    except Exception as exc:
+        db.rollback()
+        print(f"WORKFORCE_ADMIN_BOOTSTRAP=error type={type(exc).__name__}")
+    finally:
+        db_gen.close()
+
+
+def _collector_values(obj, names):
+    for name in names:
+        value=getattr(obj,name,None)
+        if value:
+            if isinstance(value,(list,tuple,set)):return [str(x).strip() for x in value if str(x).strip()]
+            return [x.strip() for x in str(value).replace(";",",").split(",") if x.strip()]
+    return []
+
+@app.get("/collector/health")
+def collector_health():
+    from collector.source_registry import default_registry
+    registry=default_registry()
+    return {"ok":True,"module":"worker-collector-v1","enabled_sources":[s.key for s in registry.enabled()]}
+
+@app.get("/collector/ready")
+def collector_ready(db: Session = Depends(get_db)):
+    """Verify the real database connection without exposing credentials or records."""
+    from sqlalchemy import text
+    from fastapi.responses import JSONResponse
+    try:
+        db.execute(text("SELECT 1"))
+        persistent = db.get_bind().dialect.name == "postgresql"
+    except Exception:
+        db.rollback()
+        return JSONResponse({"ok": False, "database": "unavailable", "persistent": False}, status_code=503)
+    return JSONResponse({"ok": persistent, "database": "connected", "persistent": persistent}, status_code=200 if persistent else 503)
+
+@app.get("/collector", response_class=HTMLResponse)
+def collector_center(request: Request, db: Session = Depends(get_db)):
+    user=current_user(request,db)
+    if not user:return RedirectResponse("/login",303)
+    require_roles(user,"admin","recruiter")
+    from collector.source_registry import default_registry
+    sources=default_registry().enabled()
+    from collector.intake import intake_stats
+    acquisition=intake_stats(db,user.tenant_id)
+    from collector.coresignal import source_status
+    provider=source_status(db,user.tenant_id)
+    projects=db.query(Project).filter(Project.tenant_id==user.tenant_id).order_by(Project.id.desc()).limit(100).all()
+    selected_project_id=request.query_params.get("project_id")
+    return templates.TemplateResponse(request,"collector.html",page_ctx(request,user,projects=projects,sources=sources,result=None,selected_project_id=selected_project_id,intake_stats=acquisition,provider_status=provider))
+
+@app.post("/collector/import", response_class=HTMLResponse)
+async def collector_import(request: Request, db:Session=Depends(get_db)):
+    user=current_user(request,db)
+    if not user:return RedirectResponse("/login",303)
+    require_roles(user,"admin","recruiter")
+    form=await request.form()
+    try:project_id=int(str(form.get("project_id","0")))
+    except ValueError:raise HTTPException(400,detail="Invalid project")
+    source_key=str(form.get("source_key","")).strip()
+    from collector.source_registry import default_registry
+    registry=default_registry()
+    try:source_cfg=registry.assert_ingestion_allowed(source_key)
+    except (ValueError,PermissionError) as exc:raise HTTPException(400,detail=str(exc))
+    csv_file=form.get("csv_file")
+    if not csv_file or not hasattr(csv_file,"read"):raise HTTPException(400,detail="CSV file required")
+    project=db.query(Project).filter(Project.id==project_id,Project.tenant_id==user.tenant_id).first()
+    if not project:raise HTTPException(404)
+    raw=await csv_file.read(5_000_001)
+    if len(raw)>5_000_000:raise HTTPException(413,detail="CSV file too large")
+    try:text=raw.decode("utf-8-sig")
+    except UnicodeDecodeError:raise HTTPException(400,detail="CSV must be UTF-8")
+    from collector.import_pipeline import records_from_csv
+    from collector.workforce_bridge import upsert_workers,create_project_candidates
+    records,report=records_from_csv(text,source=source_cfg.name,consent_basis=source_cfg.permission_basis)
+    persisted=upsert_workers(db,Worker,records,user.tenant_id)
+    worker_by_fingerprint={candidate.fingerprint:worker for candidate,worker in zip(records,persisted["workers"])}
+    matched=create_project_candidates(db,ProjectCandidate,project,worker_by_fingerprint,records,user.tenant_id)
+    audit_event(db,user,"COLLECTOR_IMPORT","project",str(project.id),f"source={source_cfg.key}; rows={report.total_rows}; accepted={report.accepted_rows}; duplicates={report.duplicates_removed}; candidates={matched['created']}; refreshed={matched['refreshed']}")
+    sources=registry.enabled()
+    projects=db.query(Project).filter(Project.tenant_id==user.tenant_id).order_by(Project.id.desc()).limit(100).all()
+    result={"report":report.to_dict(),"persisted":{"created":persisted["created"],"updated":persisted["updated"]},"matched":matched,"project":project,"source":source_cfg}
+    return templates.TemplateResponse(request,"collector.html",page_ctx(request,user,projects=projects,sources=sources,result=result,selected_project_id=str(project.id)))
+
+@app.post("/projects/{project_id}/collector/match")
+def collector_match_existing(project_id:int,request:Request,db:Session=Depends(get_db)):
+    user=current_user(request,db)
+    if not user:return RedirectResponse("/login",303)
+    require_roles(user,"admin","recruiter")
+    project=db.query(Project).filter(Project.id==project_id,Project.tenant_id==user.tenant_id).first()
+    if not project:raise HTTPException(404)
+    from collector.worker_collector import CandidateRecord
+    from collector.workforce_bridge import create_project_candidates
+    workers=db.query(Worker).filter(Worker.tenant_id==user.tenant_id).all()
+    records=[];worker_map={}
+    for w in workers:
+        certs=_collector_values(w,("certificates","certifications","certs"))
+        langs=_collector_values(w,("languages","language_skills"))
+        c=CandidateRecord(full_name=getattr(w,"full_name","") or "",country=getattr(w,"country","") or "",role=getattr(w,"profession",None) or getattr(w,"role","") or "",source="workforce-live",email=getattr(w,"email","") or "",phone=getattr(w,"phone","") or "",years_experience=float(getattr(w,"years_experience",0) or 0),certificates=certs,languages=langs,eu_citizen=getattr(w,"eu_citizen",None),availability_status=getattr(w,"availability_status","") or "UNKNOWN",available_from=getattr(w,"available_from",None),desired_net_hourly=getattr(w,"expected_salary_net_hour",None) or getattr(w,"desired_net_hourly",None))
+        records.append(c);worker_map[c.fingerprint]=w
+    matched=create_project_candidates(db,ProjectCandidate,project,worker_map,records,user.tenant_id)
+    audit_event(db,user,"COLLECTOR_REMATCH","project",str(project.id),f"ranked={matched['ranked']}; created={matched['created']}; refreshed={matched['refreshed']}; blocked={matched['blocked']}")
+    return RedirectResponse(f"/projects/{project.id}?collector_created={matched['created']}&collector_refreshed={matched['refreshed']}",303)
+
+# Register the first-party acquisition source before application startup creates tables.
+from collector.intake import install as _install_candidate_intake
+_install_candidate_intake(app)
+
+from collector.coresignal import install as _install_coresignal
+_install_coresignal(app)
+
+@app.get('/collector/profiles', response_class=HTMLResponse)
+def collected_profiles(request: Request, page: int = 1, db: Session = Depends(get_db)):
+    user=current_user(request,db)
+    if not user:return RedirectResponse('/login',303)
+    require_roles(user,'admin','recruiter')
+    from collector.coresignal import SourceProfile
+    page=max(1,min(page,100000))
+    rows=(db.query(SourceProfile,Worker).join(Worker,SourceProfile.worker_id==Worker.id)
+          .filter(SourceProfile.tenant_id==user.tenant_id,Worker.tenant_id==user.tenant_id)
+          .order_by(SourceProfile.id.desc()).offset((page-1)*20).limit(21).all())
+    from fastapi.templating import Jinja2Templates
+    from pathlib import Path
+    views=Jinja2Templates(directory=[str(Path(__file__).parent/'templates'),str(Path(__file__).parents[1]/'collector'/'templates')])
+    return views.TemplateResponse(request,'source_profiles.html',page_ctx(request,user,rows=rows[:20],page=page,has_more=len(rows)>20))
+
+from collector.free_sources import install as _install_free_sources
+_install_free_sources(app,current_user,require_roles,page_ctx)
+
+# Recruiter workspace routes, durable contact history, LT/EN account preferences.
+from collector.platform import install as _install_worker_platform
+_install_worker_platform(app,current_user,require_roles,page_ctx)
+
+# Never create demonstration people on a new production database.
+def seed_if_empty():
+    db=SessionLocal()
+    try:
+        if not db.query(Tenant).first():
+            db.add(Tenant(name='Euroteams Group'));db.commit()
+    finally:db.close()
+
+from collector.platform import csrf as _platform_csrf
+def _platform_template_context(request):
+    return {"platform_csrf":_platform_csrf(request) if request.cookies.get("wl_session") else ""}
+templates.context_processors.append(_platform_template_context)
