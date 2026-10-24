@@ -54,6 +54,10 @@ def hide_demo_workers(state):
         state.statement=state.statement.options(with_loader_criteria(Worker,lambda w:~w.email.in_(SEED_EMAILS),include_aliases=True))
 
 
+def asset_version():
+    return hashlib.sha256((Path(__file__).parents[1]/'app'/'static'/'styles.css').read_bytes()).hexdigest()[:12]
+
+
 def segment(worker):
     value=(worker.profession+' '+worker.skills).lower()
     rules=[('welder',r'weld|suvir|свар'),('pipefitter',r'pipefitt|vamzd'),('carpenter',r'carpent|stali|столяр'),('mason',r'mason|mūrin|murini|камен'),('electrician',r'electric|elektr'),('mechanic',r'mechan|mechani'),('scaffolder',r'scaffold|pastolin'),('fitter',r'fitter|montuot|assembl|metal fitter'),('general',r'general|labour|labor|helper|nekval|pagalbin')]
@@ -117,7 +121,7 @@ def install(app,current_user,require_roles,page_ctx):
     locale_install(app,current_user)
     views=Jinja2Templates(directory=[str(Path(__file__).parent/'templates'),str(Path(__file__).parents[1]/'app'/'templates')])
     def ctx(request,user,**kw):
-        return page_ctx(request,user,csrf_token=csrf(request),lang=language(request),t=lambda text:translate(text,language(request)),segments=SEGMENTS,completeness=__import__('collector.matching',fromlist=['completeness']).completeness,**kw)
+        return page_ctx(request,user,asset_version=asset_version(),csrf_token=csrf(request),lang=language(request),t=lambda text:translate(text,language(request)),segments=SEGMENTS,completeness=__import__('collector.matching',fromlist=['completeness']).completeness,**kw)
     def render(request,user,template,**kw):return views.TemplateResponse(request,template,ctx(request,user,**kw))
     def user_for(request,db):
         user=current_user(request,db)

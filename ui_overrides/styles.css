@@ -6,3 +6,5 @@
 .group-logo{display:block;flex:0 0 54px;object-fit:contain}.language-bar a:focus-visible,.btn:focus-visible,.segment:focus-visible{outline:3px solid #b79b62;outline-offset:3px}
 @media(min-width:1101px){.filters.worker-filters{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;align-items:center}.filters.worker-filters>.btn{width:auto}.filters.worker-filters input.search{min-width:0}}
 .worker-card h2,.worker-card h2 a{font-size:20px;line-height:1.3;font-weight:700}.segment{text-decoration:none}.worker-card dl small{margin-top:5px}
+
+@media(max-width:1100px){.sidebar nav[aria-label]{flex-wrap:wrap;overflow:visible;gap:4px}.sidebar nav[aria-label] a{white-space:normal;flex-shrink:0}}
