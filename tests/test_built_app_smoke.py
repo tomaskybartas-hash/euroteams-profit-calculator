@@ -284,3 +284,34 @@ def test_sourced_profiles_are_protected(intake_client):
     response=client.get('/collector/profiles',follow_redirects=False)
     assert response.status_code==303
     assert response.headers['location']=='/login'
+
+
+def test_free_rss_filters_services_and_deduplicates_links(intake_client):
+    from datetime import datetime, timezone
+    from email.utils import format_datetime
+    from collector.free_sources import parse_feed,refresh,FreeLead
+    from sqlalchemy.orm import Session
+    import httpx
+    _, engine=intake_client
+    date=format_datetime(datetime.now(timezone.utc))
+    raw=f'<rss><channel><item><title>Ищу работу сварщика</title><link>https://www.ss.com/msg/ru/work/i-search-for-work/welder/abc.html</link><pubDate>{date}</pubDate></item><item><title>Сварочные услуги</title><link>https://www.ss.com/msg/ru/work/i-search-for-work/welder/def.html</link></item><item><title>Ищу работу</title><link>https://evil.example/profile</link></item></channel></rss>'.encode()
+    assert len(parse_feed(raw))==1
+    calls=[]
+    def handler(req):
+        calls.append(str(req.url));return httpx.Response(200,content=raw)
+    with Session(engine) as db,httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        first=refresh(db,1,client)
+        assert first['added']==1
+        second=refresh(db,1,client)
+        assert second['cached'] is True and len(calls)==1
+        assert db.query(FreeLead).count()==1
+
+
+def test_free_rss_rejects_entities_and_does_not_import_as_workers(intake_client):
+    from collector.free_sources import parse_feed
+    from app.models import Worker
+    from sqlalchemy.orm import Session
+    _,engine=intake_client
+    with pytest.raises(ValueError):parse_feed(b'<!DOCTYPE foo><rss/>')
+    with Session(engine) as db:
+        assert db.query(Worker).count()==0

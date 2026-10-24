@@ -141,3 +141,6 @@ def collected_profiles(request: Request, page: int = 1, db: Session = Depends(ge
     from pathlib import Path
     views=Jinja2Templates(directory=[str(Path(__file__).parent/'templates'),str(Path(__file__).parents[1]/'collector'/'templates')])
     return views.TemplateResponse(request,'source_profiles.html',page_ctx(request,user,rows=rows[:20],page=page,has_more=len(rows)>20))
+
+from collector.free_sources import install as _install_free_sources
+_install_free_sources(app,current_user,require_roles,page_ctx)

@@ -191,7 +191,7 @@ def install(app):
 
     @app.on_event('startup')
     def launch_trial():
-        if not os.getenv('CORESIGNAL_API_KEY'):
+        if os.getenv('CORESIGNAL_AUTO_ENABLED', 'false').lower() != 'true' or not os.getenv('CORESIGNAL_API_KEY'):
             return
         def execute():
             with SessionLocal() as db:
