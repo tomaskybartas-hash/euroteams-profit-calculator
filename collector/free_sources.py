@@ -13,6 +13,8 @@ from app.db import Base, SessionLocal
 
 FEED='https://www.ss.com/ru/work/i-search-for-work/welder/rss/'
 SOURCE='ss-jobseeker-welder-rss'
+FEEDS={'welder':'welder','mason':'mason','mechanics':'mechanic','electrician':'electrician'}
+STATE_ID=2
 
 class FreeLead(Base):
     __tablename__='collector_free_leads'
@@ -46,7 +48,7 @@ def clean(value):
     return re.sub(r'\s+',' ',value).strip()
 
 
-def parse_feed(raw):
+def parse_feed(raw,category="welder"):
     if len(raw)>1_000_000 or b'<!DOCTYPE' in raw.upper() or b'<!ENTITY' in raw.upper():
         raise ValueError('unsupported_feed')
     root=ET.fromstring(raw)
@@ -62,7 +64,7 @@ def parse_feed(raw):
         parsed=urlparse(url)
         if parsed.scheme!='https' or parsed.hostname not in {'www.ss.com','ss.com','m.ss.com'} or parsed.query or parsed.fragment:
             continue
-        if not re.fullmatch(r'/msg/ru/work/i-search-for-work/welder/[a-z]+\.html',parsed.path):
+        if category not in FEEDS or not re.fullmatch(r'/msg/ru/work/i-search-for-work/'+re.escape(category)+r'/[a-z]+\.html',parsed.path):
             continue
         if url in seen:continue
         seen.add(url)
@@ -72,16 +74,16 @@ def parse_feed(raw):
         except (ValueError,TypeError,OverflowError):pass
         if posted and (posted<datetime.utcnow()-timedelta(days=30) or posted>datetime.utcnow()+timedelta(days=1)):
             continue
-        results.append({'source_url':url,'title':title[:180],'published_at':posted})
+        results.append({'source_url':url,'title':title[:180],'published_at':posted,'profession':FEEDS[category],'source':'ss-jobseeker-'+category+'-rss'})
     return results
 
 
 def refresh(db, tenant_id=1, client=None):
     if db.get_bind().dialect.name=='postgresql':
         db.execute(text('SELECT pg_advisory_xact_lock(64132972)'))
-    state=db.get(FreeSourceState,1)
+    state=db.get(FreeSourceState,STATE_ID)
     if state is None:
-        state=FreeSourceState(id=1);db.add(state);db.flush()
+        state=FreeSourceState(id=STATE_ID);db.add(state);db.flush()
     now=datetime.utcnow()
     cooldown=timedelta(minutes=15) if state.status=='FAILED' else timedelta(hours=4)
     if state.checked_at and now-state.checked_at<cooldown:
@@ -91,22 +93,31 @@ def refresh(db, tenant_id=1, client=None):
     own=client is None
     if own:client=httpx.Client(timeout=20,follow_redirects=False,headers={'User-Agent':'EuroteamsRSSReader/1.0 (recruitment feed reader)'})
     try:
-        with client.stream('GET',FEED) as response:
-            response.raise_for_status()
-            raw=bytearray()
-            for chunk in response.iter_bytes():
-                raw.extend(chunk)
-                if len(raw)>1_000_000:raise ValueError('feed_too_large')
-        entries=parse_feed(bytes(raw));state.found=len(entries);state.added=0;state.duplicates=0
+        entries=[];feed_errors=[]
+        for category in FEEDS:
+            try:
+                url='https://www.ss.com/ru/work/i-search-for-work/'+category+'/rss/'
+                with client.stream('GET',url) as response:
+                    response.raise_for_status()
+                    raw=bytearray()
+                    for chunk in response.iter_bytes():
+                        raw.extend(chunk)
+                        if len(raw)>1_000_000:raise ValueError('feed_too_large')
+                entries.extend(parse_feed(bytes(raw),category))
+            except (httpx.HTTPError,ValueError,ET.ParseError) as exc:
+                feed_errors.append(category+':'+(str(exc.response.status_code) if isinstance(exc,httpx.HTTPStatusError) else type(exc).__name__))
+        state.found=len(entries);state.added=0;state.duplicates=0
         for entry in entries:
             old=db.query(FreeLead).filter(FreeLead.source_url==entry['source_url']).first()
             if old:
                 old.last_seen_at=now;state.duplicates+=1
             else:
                 db.add(FreeLead(tenant_id=tenant_id,**entry));state.added+=1
-        state.status='COMPLETED';db.commit()
+        state.error=','.join(feed_errors)[:80]
+        state.status=('DEGRADED' if entries else 'FAILED') if feed_errors else 'COMPLETED'
+        db.commit()
     except Exception as exc:
-        db.rollback();state=db.get(FreeSourceState,1);state.status='FAILED'
+        db.rollback();state=db.get(FreeSourceState,STATE_ID);state.status='FAILED'
         state.error=f'HTTP_{exc.response.status_code}' if isinstance(exc,httpx.HTTPStatusError) else type(exc).__name__
         db.commit()
     finally:
@@ -133,6 +144,6 @@ def install(app,current_user,require_roles,page_ctx):
         require_roles(user,'admin','recruiter')
         page=max(1,min(page,100000))
         rows=db.query(FreeLead).filter(FreeLead.tenant_id==user.tenant_id).order_by(FreeLead.id.desc()).offset((page-1)*20).limit(21).all()
-        state=db.get(FreeSourceState,1)
+        state=db.get(FreeSourceState,STATE_ID)
         views=Jinja2Templates(directory=[str(Path(__file__).parents[1]/'app'/'templates'),str(Path(__file__).parent/'templates')])
         return views.TemplateResponse(request,'free_leads.html',page_ctx(request,user,rows=rows[:20],has_more=len(rows)>20,page=page,state=state))

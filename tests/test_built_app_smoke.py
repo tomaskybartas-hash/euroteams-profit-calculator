@@ -303,7 +303,7 @@ def test_free_rss_filters_services_and_deduplicates_links(intake_client):
         first=refresh(db,1,client)
         assert first['added']==1
         second=refresh(db,1,client)
-        assert second['cached'] is True and len(calls)==1
+        assert second['cached'] is True and len(calls)==4
         assert db.query(FreeLead).count()==1
 
 
