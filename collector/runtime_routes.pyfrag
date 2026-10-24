@@ -59,9 +59,11 @@ def collector_center(request: Request, db: Session = Depends(get_db)):
     require_roles(user,"admin","recruiter")
     from collector.source_registry import default_registry
     sources=default_registry().enabled()
+    from collector.intake import intake_stats
+    acquisition=intake_stats(db,user.tenant_id)
     projects=db.query(Project).filter(Project.tenant_id==user.tenant_id).order_by(Project.id.desc()).limit(100).all()
     selected_project_id=request.query_params.get("project_id")
-    return templates.TemplateResponse(request,"collector.html",page_ctx(request,user,projects=projects,sources=sources,result=None,selected_project_id=selected_project_id))
+    return templates.TemplateResponse(request,"collector.html",page_ctx(request,user,projects=projects,sources=sources,result=None,selected_project_id=selected_project_id,intake_stats=acquisition))
 
 @app.post("/collector/import", response_class=HTMLResponse)
 async def collector_import(request: Request, db:Session=Depends(get_db)):
@@ -115,3 +117,7 @@ def collector_match_existing(project_id:int,request:Request,db:Session=Depends(g
     matched=create_project_candidates(db,ProjectCandidate,project,worker_map,records,user.tenant_id)
     audit_event(db,user,"COLLECTOR_REMATCH","project",str(project.id),f"ranked={matched['ranked']}; created={matched['created']}; refreshed={matched['refreshed']}; blocked={matched['blocked']}")
     return RedirectResponse(f"/projects/{project.id}?collector_created={matched['created']}&collector_refreshed={matched['refreshed']}",303)
+
+# Register the first-party acquisition source before application startup creates tables.
+from collector.intake import install as _install_candidate_intake
+_install_candidate_intake(app)
