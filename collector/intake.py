@@ -82,7 +82,7 @@ def validate_input(form):
                 preferred_rotation=value('rotation', 80), city=value('city', 120))
 
 
-def collect(db, values, nonce, tenant_id, offer_permission=False, request_key=""):
+def collect(db, values, nonce, tenant_id, offer_permission=False, request_key="", whatsapp_permission=False):
     """One atomic acquisition transaction, including provenance and consent."""
     email, phone = values['email'], values['phone']
     checks = []
@@ -93,6 +93,8 @@ def collect(db, values, nonce, tenant_id, offer_permission=False, request_key=""
         for char in (' ', '-', '(', ')', '.'):
             stored_phone = func.replace(stored_phone, char, '')
         checks.append(stored_phone == phone)
+    if whatsapp_permission and not re.fullmatch(r'\+[1-9][0-9]{7,14}',phone):
+        raise ValueError('Enter a valid WhatsApp number including country code')
     # Serialize concurrent submissions for one contact on PostgreSQL.
     if db.get_bind().dialect.name == 'postgresql':
         from sqlalchemy import text
@@ -114,13 +116,15 @@ def collect(db, values, nonce, tenant_id, offer_permission=False, request_key=""
                     identity_verified=False, documents_verified=False,
                     skills_verified=False, ready_to_deploy=False,
                     work_permit_notes='Self-declared application; recruiter verification required',
-                    preferred_channel='Email' if email else 'WhatsApp')
+                    preferred_channel='WhatsApp' if whatsapp_permission else 'Email' if email else 'WhatsApp')
     db.add(worker)
     db.flush()
     db.add(CandidateIntake(tenant_id=tenant_id, worker_id=worker.id, nonce=nonce, status='CREATED', request_key=request_key))
-    if offer_permission:
-        db.add(Consent(tenant_id=tenant_id, worker_id=worker.id, channel=worker.preferred_channel,
+    if offer_permission and email:
+        db.add(Consent(tenant_id=tenant_id, worker_id=worker.id, channel='Email',
                        purpose='job_offers', granted=True, source='worker_self_registration', text_version=PRIVACY_VERSION))
+    if whatsapp_permission:
+        db.add(Consent(tenant_id=tenant_id,worker_id=worker.id,channel='WhatsApp',purpose='job_offers',granted=True,source='worker_self_registration',text_version='whatsapp-optin-v1'))
     db.add(AuditLog(tenant_id=tenant_id, actor='candidate-portal', action='CANDIDATE_SELF_REGISTERED',
                     entity_type='worker', entity_id=str(worker.id), details='source=euroteams-portal; verification=self-declared'))
     db.commit()
@@ -203,7 +207,10 @@ def install(app):
         except (ValueError, OverflowError) as exc:
             return render(request, str(exc), 422)
         try:
-            result = collect(db, values, nonce, tid, form.get('offers') == 'yes', key)
+            whatsapp_permission=form.get('whatsapp_offers')=='yes'
+            if whatsapp_permission and not re.fullmatch(r'\+[1-9][0-9]{7,14}',values['phone']):
+                return render(request,'Enter a valid WhatsApp number including country code',422)
+            result = collect(db, values, nonce, tid, form.get('offers') == 'yes', key,whatsapp_permission)
         except IntegrityError:
             db.rollback()
             return RedirectResponse('/join/received', 303)

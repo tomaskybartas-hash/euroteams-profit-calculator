@@ -175,3 +175,23 @@ def test_unknown_fields_do_not_invent_compatibility_or_interest(setup):
     page=client.get('/projects/1').text
     assert 'Interest 99' not in page and 'Arrival' not in page
     assert 'Matching uses supplied information' in page
+
+def test_candidate_can_opt_in_to_whatsapp_with_email_present(setup):
+    client,engine=setup
+    from collector.intake import collect
+    from collector.platform import consent_allowed,whatsapp_number
+    with Session(engine) as db:
+        result=collect(db,dict(full_name='QA explicit WhatsApp applicant',country='LT',profession='welder',phone='+37060056789',email='wa-test@example.test'),nonce='qa-whatsapp-explicit-consent',tenant_id=1,offer_permission=False,whatsapp_permission=True)
+        worker=db.get(Worker,result['worker_id'])
+        assert worker.preferred_channel=='WhatsApp'
+        assert whatsapp_number(worker)=='+37060056789'
+        assert consent_allowed(db,worker.id)
+        assert db.query(Consent).filter(Consent.worker_id==worker.id,Consent.channel=='Email').count()==0
+
+def test_email_permission_does_not_become_whatsapp_permission(setup):
+    client,engine=setup
+    from collector.intake import collect
+    from collector.platform import consent_allowed
+    with Session(engine) as db:
+        result=collect(db,dict(full_name='QA email applicant',country='LT',profession='welder',phone='+37060056780',email='email-test@example.test'),nonce='qa-email-only-consent',tenant_id=1,offer_permission=True,whatsapp_permission=False)
+        assert not consent_allowed(db,result['worker_id'])
