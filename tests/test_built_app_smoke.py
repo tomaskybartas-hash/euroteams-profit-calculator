@@ -220,3 +220,67 @@ def test_registration_limits_body_size_and_honeypot(intake_client):
     assert client.post('/join', data=registration_form(client, website='bot.invalid')).status_code == 200
     with Session(engine) as db:
         assert db.query(Worker).count() == 0
+
+
+def test_coresignal_acquires_actual_response_once_and_preserves_unknown_status(intake_client, monkeypatch):
+    import httpx
+    from sqlalchemy.orm import Session
+    from app.models import Worker, Consent
+    from collector.coresignal import acquire, SourceProfile, source_status
+    client, engine = intake_client
+    monkeypatch.setenv('CORESIGNAL_API_KEY','local-test-key')
+    calls=[]
+    def transport(request):
+        calls.append(request.url.path)
+        if request.method == 'POST': return httpx.Response(200,json=[123])
+        return httpx.Response(200,json={'id':123,'full_name':'QA Provider Profile','location_country_iso2':'PL','active_experience_title':'MIG/MAG Welder','professional_network_url':'https://example.com/profiles/qa-provider-profile'})
+    with httpx.Client(transport=httpx.MockTransport(transport)) as api, Session(engine) as db:
+        assert acquire(db,1,'isolated-test-run',3,api)['added'] == 1
+        assert acquire(db,1,'isolated-test-run',3,api)['state'] == 'ALREADY_RUN'
+        assert len(calls) == 2
+        worker=db.query(Worker).one()
+        assert worker.availability_status == 'UNKNOWN' and worker.ready_to_deploy is False
+        assert worker.eu_citizen is False and worker.phone == '' and worker.email == ''
+        assert db.query(Consent).count() == 0
+        assert db.query(SourceProfile).one().source_id == '123'
+        status=source_status(db,1)
+        assert status['workers_after'] == status['workers_before'] + 1
+        assert 'QA Provider' not in str(status)
+
+
+def test_coresignal_auth_failure_is_safe_and_does_not_import_samples(intake_client, monkeypatch):
+    import httpx
+    from sqlalchemy.orm import Session
+    from app.models import Worker
+    from collector.coresignal import acquire, source_status
+    client, engine=intake_client
+    monkeypatch.setenv('CORESIGNAL_API_KEY','local-test-key')
+    with httpx.Client(transport=httpx.MockTransport(lambda req:httpx.Response(401,text='private provider details'))) as api, Session(engine) as db:
+        assert acquire(db,1,'auth-failure-test',3,api)['state'] == 'FAILED'
+        assert db.query(Worker).count() == 0
+        assert source_status(db,1)['error_code'] == 'HTTP_401'
+        assert 'private' not in str(source_status(db,1))
+
+
+def test_coresignal_enforces_three_paid_requests_and_skips_bad_records(intake_client, monkeypatch):
+    import httpx
+    from sqlalchemy.orm import Session
+    from collector.coresignal import acquire, SourceRun
+    client, engine=intake_client
+    monkeypatch.setenv('CORESIGNAL_API_KEY','local-test-key')
+    paid=[]
+    def handler(req):
+        if req.method=='POST':return httpx.Response(200,json=list(range(10)))
+        paid.append(req.url.path)
+        return httpx.Response(200,json={'full_name':'No source evidence'})
+    with httpx.Client(transport=httpx.MockTransport(handler)) as api, Session(engine) as db:
+        result=acquire(db,1,'bounded-test',100,api)
+        assert len(paid)==3 and result['added']==0
+        assert db.query(SourceRun).one().errors==3
+
+
+def test_sourced_profiles_are_protected(intake_client):
+    client, engine=intake_client
+    response=client.get('/collector/profiles',follow_redirects=False)
+    assert response.status_code==303
+    assert response.headers['location']=='/login'

@@ -61,9 +61,11 @@ def collector_center(request: Request, db: Session = Depends(get_db)):
     sources=default_registry().enabled()
     from collector.intake import intake_stats
     acquisition=intake_stats(db,user.tenant_id)
+    from collector.coresignal import source_status
+    provider=source_status(db,user.tenant_id)
     projects=db.query(Project).filter(Project.tenant_id==user.tenant_id).order_by(Project.id.desc()).limit(100).all()
     selected_project_id=request.query_params.get("project_id")
-    return templates.TemplateResponse(request,"collector.html",page_ctx(request,user,projects=projects,sources=sources,result=None,selected_project_id=selected_project_id,intake_stats=acquisition))
+    return templates.TemplateResponse(request,"collector.html",page_ctx(request,user,projects=projects,sources=sources,result=None,selected_project_id=selected_project_id,intake_stats=acquisition,provider_status=provider))
 
 @app.post("/collector/import", response_class=HTMLResponse)
 async def collector_import(request: Request, db:Session=Depends(get_db)):
@@ -121,3 +123,21 @@ def collector_match_existing(project_id:int,request:Request,db:Session=Depends(g
 # Register the first-party acquisition source before application startup creates tables.
 from collector.intake import install as _install_candidate_intake
 _install_candidate_intake(app)
+
+from collector.coresignal import install as _install_coresignal
+_install_coresignal(app)
+
+@app.get('/collector/profiles', response_class=HTMLResponse)
+def collected_profiles(request: Request, page: int = 1, db: Session = Depends(get_db)):
+    user=current_user(request,db)
+    if not user:return RedirectResponse('/login',303)
+    require_roles(user,'admin','recruiter')
+    from collector.coresignal import SourceProfile
+    page=max(1,min(page,100000))
+    rows=(db.query(SourceProfile,Worker).join(Worker,SourceProfile.worker_id==Worker.id)
+          .filter(SourceProfile.tenant_id==user.tenant_id,Worker.tenant_id==user.tenant_id)
+          .order_by(SourceProfile.id.desc()).offset((page-1)*20).limit(21).all())
+    from fastapi.templating import Jinja2Templates
+    from pathlib import Path
+    views=Jinja2Templates(directory=[str(Path(__file__).parent/'templates'),str(Path(__file__).parents[1]/'collector'/'templates')])
+    return views.TemplateResponse(request,'source_profiles.html',page_ctx(request,user,rows=rows[:20],page=page,has_more=len(rows)>20))
