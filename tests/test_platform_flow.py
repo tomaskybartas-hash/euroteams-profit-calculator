@@ -159,3 +159,19 @@ def test_account_language_is_restored_in_a_fresh_browser(setup,monkeypatch):
     response=client.get('/settings')
     assert '<html lang="lt">' in response.text
     assert 'Nustatymai' in response.text
+
+def test_unknown_fields_do_not_invent_compatibility_or_interest(setup):
+    client,engine=setup
+    from collector.matching import score,completeness
+    with Session(engine) as db:
+        worker=db.get(Worker,1);job=db.get(Project,1)
+        result=score(worker,job)
+        assert result['eligible'] is False
+        assert 'availability not confirmed' in result['hard_failures']
+        assert 'Salary compatible' not in result['reasons']
+        assert 'Country preference matches' not in result['reasons']
+        assert result['interest_probability']==0 and result['arrival_probability']==0
+        assert completeness(worker)>0
+    page=client.get('/projects/1').text
+    assert 'Interest 99' not in page and 'Arrival' not in page
+    assert 'Matching uses supplied information' in page

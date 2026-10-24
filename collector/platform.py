@@ -1,5 +1,6 @@
 """Recruiter workspace: provenance, segmented search, honest WhatsApp drafts and contact history."""
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 import hashlib, hmac, os, re, secrets
 from urllib.parse import quote, urlencode
@@ -116,7 +117,7 @@ def install(app,current_user,require_roles,page_ctx):
     locale_install(app,current_user)
     views=Jinja2Templates(directory=[str(Path(__file__).parent/'templates'),str(Path(__file__).parents[1]/'app'/'templates')])
     def ctx(request,user,**kw):
-        return page_ctx(request,user,csrf_token=csrf(request),lang=language(request),t=lambda text:translate(text,language(request)),segments=SEGMENTS,**kw)
+        return page_ctx(request,user,csrf_token=csrf(request),lang=language(request),t=lambda text:translate(text,language(request)),segments=SEGMENTS,completeness=__import__('collector.matching',fromlist=['completeness']).completeness,**kw)
     def render(request,user,template,**kw):return views.TemplateResponse(request,template,ctx(request,user,**kw))
     def user_for(request,db):
         user=current_user(request,db)
@@ -136,6 +137,11 @@ def install(app,current_user,require_roles,page_ctx):
             from itsdangerous import URLSafeTimedSerializer
             key=hmac.new(source.encode(),b'euroteams-session-key-v1',hashlib.sha256).hexdigest()
             auth.serializer=URLSafeTimedSerializer(key,salt='workforce-live-session')
+    from collector.matching import ranked_workers as evidence_ranked
+    import app.services.matching as matching
+    matching.ranked_workers=evidence_ranked
+    import sys
+    sys.modules['app.main'].ranked_workers=evidence_ranked
     # A provider must never claim a real send when no external messaging API exists.
     import app.services.messaging as messaging
     class UnconfiguredProvider(messaging.MessagingProvider):
@@ -143,6 +149,7 @@ def install(app,current_user,require_roles,page_ctx):
             return messaging.SendResult(status='NOT_SENT_API_NOT_CONFIGURED',provider_id='')
     messaging.DemoMessagingProvider=UnconfiguredProvider
     messaging.has_consent=lambda db,wid,channel: consent_allowed(db,wid) if channel=='WhatsApp' else bool(db.query(Consent).filter(Consent.worker_id==wid,Consent.channel==channel,Consent.granted==True,Consent.revoked_at.is_(None)).first())
+    app.router.routes[:]=[r for r in app.router.routes if not (getattr(r,'path','') in ['/projects/{project_id}','/workers/{worker_id}'] and 'GET' in getattr(r,'methods',set()))]
     # Static export must precede the legacy /workers/{worker_id} matcher.
     exports=[r for r in app.router.routes if getattr(r,'path','')=='/workers/export.csv']
     app.router.routes[:]=exports+[r for r in app.router.routes if r not in exports]
@@ -173,12 +180,14 @@ def install(app,current_user,require_roles,page_ctx):
         user=current_user(request,db)
         if not user:return RedirectResponse('/login',303)
         rows=db.query(Worker).filter(Worker.tenant_id==user.tenant_id).all()
-        now=datetime.utcnow(); counts={k:0 for k in SEGMENTS}
+        now=datetime.utcnow();local_now=now.replace(tzinfo=timezone.utc).astimezone(ZoneInfo('Europe/Vilnius'));counts={k:0 for k in SEGMENTS}
+        local_date=lambda value:value.replace(tzinfo=timezone.utc).astimezone(ZoneInfo('Europe/Vilnius')).date()
+        next_tick=min(now.replace(hour=h,minute=17,second=0,microsecond=0)+timedelta(days=d) for d in [0,1] for h in [0,6,12,18] if now.replace(hour=h,minute=17,second=0,microsecond=0)+timedelta(days=d)>now)
         for w in rows:counts[segment(w)]+=1
         jobs=db.query(Project).filter(Project.tenant_id==user.tenant_id,Project.status!='CLOSED').all()
         contacts=db.query(ContactHistory).filter(ContactHistory.tenant_id==user.tenant_id)
-        stats={'Total Workers':len(rows),'Available Workers':sum(w.availability_status=='AVAILABLE NOW' for w in rows),'New Today':sum(w.created_at.date()==now.date() for w in rows),'New This Week':sum(w.created_at>=now-timedelta(days=7) for w in rows),'Contacted':contacts.filter(ContactHistory.status=='CONTACTED').count(),'Interested':db.query(WorkerContact).join(Worker,Worker.id==WorkerContact.worker_id).filter(Worker.tenant_id==user.tenant_id,WorkerContact.status=='Interested').count(),'Active Jobs':len(jobs),'Matches':db.query(ProjectCandidate).join(Project).filter(Project.tenant_id==user.tenant_id).count()}
-        return render(request,user,'platform_dashboard.html',stats=stats,counts=counts,jobs=jobs[:6],state=db.get(FreeSourceState,STATE_ID),leads=db.query(FreeLead).filter(FreeLead.tenant_id==user.tenant_id).count())
+        stats={'Total Workers':len(rows),'Available Workers':sum(w.availability_status=='AVAILABLE NOW' for w in rows),'New Today':sum(local_date(w.created_at)==local_now.date() for w in rows),'New This Week':sum(w.created_at>=now-timedelta(days=7) for w in rows),'Contacted':contacts.filter(ContactHistory.status=='CONTACTED').count(),'Interested':db.query(WorkerContact).join(Worker,Worker.id==WorkerContact.worker_id).filter(Worker.tenant_id==user.tenant_id,WorkerContact.status=='Interested').count(),'Active Jobs':len(jobs),'Matches':db.query(ProjectCandidate).join(Project).filter(Project.tenant_id==user.tenant_id,Project.status!='CLOSED').count()}
+        return render(request,user,'platform_dashboard.html',next_run=next_tick.replace(tzinfo=timezone.utc).astimezone(ZoneInfo('Europe/Vilnius')).strftime('%Y-%m-%d %H:%M %Z'),stats=stats,counts=counts,jobs=jobs[:6],state=db.get(FreeSourceState,STATE_ID),leads=db.query(FreeLead).filter(FreeLead.tenant_id==user.tenant_id).count())
 
     @app.get('/workers',response_class=HTMLResponse)
     def workers(request:Request,db:Session=Depends(get_db)):
@@ -198,7 +207,7 @@ def install(app,current_user,require_roles,page_ctx):
         if f.get('eu')=='yes':query=query.filter(Worker.eu_citizen==True)
         try:
             if f.get('experience'):query=query.filter(Worker.years_experience>=int(f['experience']))
-            if f.get('quality'):query=query.filter(Worker.profile_completeness>=int(f['quality']))
+            if f.get('quality'):int(f['quality'])
             page=max(1,int(f.get('page','1')))
         except ValueError:raise HTTPException(400,'Invalid filter')
         sourced={x.worker_id:x.source_url for x in db.query(SourceProfile).filter(SourceProfile.tenant_id==user.tenant_id).all()}
@@ -211,6 +220,9 @@ def install(app,current_user,require_roles,page_ctx):
         if f.get('source'):rows=[w for w in rows if source(w)==f['source']]
         contacts={c.worker_id:c for c in db.query(WorkerContact).join(Worker,Worker.id==WorkerContact.worker_id).filter(Worker.tenant_id==user.tenant_id).all()}
         if f.get('status'):rows=[w for w in rows if (contacts[w.id].status if w.id in contacts else 'New')==f['status']]
+        if f.get('quality'):
+            from collector.matching import completeness
+            rows=[w for w in rows if completeness(w)>=int(f['quality'])]
         total=len(rows);rows=rows[(page-1)*30:page*30]
         return render(request,user,'platform_workers.html',workers=rows,filters=f,counts=counts,total=total,page=page,has_more=total>page*30,source=source,sourced=sourced,contacts=contacts,wa=whatsapp_number,statuses=STATUSES,countries=sorted({w.country for w in all_rows}),page_query=urlencode({k:v for k,v in f.items() if k!='page'}))
 
@@ -346,3 +358,18 @@ def install(app,current_user,require_roles,page_ctx):
         if width not in [360,390,768,1280] or surface not in ['workers','dashboard','jobs','matches','sources','settings']:raise HTTPException(400,'Invalid preview')
         target={'workers':'/workers','dashboard':'/','jobs':'/projects','matches':'/matches','sources':'/sources','settings':'/settings'}[surface]
         return HTMLResponse('<!doctype html><html><head><title>Euroteams responsive QA</title><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#dce5eb"><p style="font:16px system-ui;padding:10px">Euroteams QA · '+str(width)+'px</p><iframe title="Responsive workspace" src="'+target+'" width="'+str(width)+'" height="1100" style="display:block;border:0;background:white;margin:0 auto;max-width:100%"></iframe></body></html>')
+
+    @app.get('/projects/{project_id}',response_class=HTMLResponse)
+    def job_detail(project_id:int,request:Request,db:Session=Depends(get_db)):
+        user=user_for(request,db)
+        job=db.query(Project).filter(Project.id==project_id,Project.tenant_id==user.tenant_id).first()
+        if not job:raise HTTPException(404,'Job not found')
+        rows=evidence_ranked(db,job,user.tenant_id,limit=100,include_ineligible=True)
+        return render(request,user,'platform_job_detail.html',job=job,rows=rows)
+
+    @app.get('/workers/{worker_id}',response_class=HTMLResponse)
+    def worker_detail(worker_id:int,request:Request,db:Session=Depends(get_db)):
+        from app.models import WorkerDocument,AvailabilityEvent
+        user=user_for(request,db);worker=worker_for(db,worker_id,user)
+        evidence=db.query(SourceProfile).filter(SourceProfile.worker_id==worker.id,SourceProfile.tenant_id==user.tenant_id).first()
+        return render(request,user,'worker_detail.html',worker=worker,source_url=evidence.source_url if evidence else '',confidence='—' if not worker.last_availability_confirmed else 'Confirmed date: '+str(worker.last_availability_confirmed),documents=db.query(WorkerDocument).filter(WorkerDocument.worker_id==worker.id).all(),messages=db.query(Message).filter(Message.worker_id==worker.id).order_by(Message.created_at.desc()).limit(20).all(),events=db.query(AvailabilityEvent).filter(AvailabilityEvent.worker_id==worker.id).order_by(AvailabilityEvent.created_at.desc()).limit(20).all(),consents=db.query(Consent).filter(Consent.worker_id==worker.id).order_by(Consent.created_at.desc()).all())
