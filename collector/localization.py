@@ -293,7 +293,7 @@ def translate(value,lang):
 def language(request):return getattr(request.state,'language',request.cookies.get('et_language','en'))
 
 class Translator(HTMLParser):
-    def __init__(self,lang):super().__init__(convert_charrefs=False);self.lang=lang;self.output=[];self.skip=0
+    def __init__(self,lang):super().__init__(convert_charrefs=True);self.lang=lang;self.output=[];self.skip=0
     def handle_starttag(self,tag,attrs):
         if tag in ['script','style']:self.skip+=1
         new=[]
@@ -308,7 +308,9 @@ class Translator(HTMLParser):
         if tag in ['script','style']:self.skip=max(0,self.skip-1)
     def handle_data(self,data):
         translated=translate(data,self.lang) if not self.skip else data
-        self.output.append(data if translated==data else re.match(r'^\s*',data)[0]+html.escape(translated)+re.search(r'\s*$',data)[0])
+        if self.skip:self.output.append(data)
+        elif translated==data:self.output.append(html.escape(data,quote=False))
+        else:self.output.append(re.match(r'^\s*',data)[0]+html.escape(translated)+re.search(r'\s*$',data)[0])
     def handle_entityref(self,name):self.output.append('&'+name+';')
     def handle_charref(self,name):self.output.append('&#'+name+';')
     def handle_comment(self,data):self.output.append('<!--'+data+'-->')
@@ -640,3 +642,5 @@ for key,value in list(LT.items()):LT.setdefault(key.upper(),value.upper())
 LT['Paid automatic collection is disabled. Previously sourced professional profiles require availability, citizenship and contact-permission checks.']='Automatinis mokamas rinkimas išjungtas. Anksčiau gautuose profesiniuose profiliuose reikia patikrinti pasirengimą dirbti, pilietybę ir leidimą susisiekti.'
 
 LT.update({'NL':'Nyderlandai','LT':'Lietuva','LV':'Latvija','PL':'Lenkija','RO':'Rumunija','BG':'Bulgarija','ES':'Ispanija','IT':'Italija','Netherlands':'Nyderlandai','Finland':'Suomija','Sweden':'Švedija','Germany':'Vokietija','English':'Anglų','Polish':'Lenkų','Lithuanian':'Lietuvių','PIPELINE STRENGTH':'ATRANKOS APRĖPTIS','LIVE PIPELINE':'KANDIDATŲ EIGA','PROJECT COMMAND CENTER':'PROJEKTO VALDYMAS','RECOMMENDED NEXT ACTION':'REKOMENDUOJAMAS KITAS VEIKSMAS','REMAINING':'LIKĘ','SECURED':'UŽTIKRINTA','48H RESERVED':'REZERVUOTA 48 VAL.','SCREENING COMPLETE':'PATIKRA BAIGTA','START':'PRADŽIA','WEEKS':'SAVAITĖS','RATE':'ATLYGIS','CALCULATING URGENCY…':'VERTINAMAS SKUBUMAS…','CHECK NOW':'TIKRINTI DABAR','STALE AVAILABILITY':'PASENUSI BŪSENA','EXPIRING / EXPIRED DOCS':'BESIBAIGIANTYS / NEBEGALIOJANTYS DOKUMENTAI'})
+
+LT['Euroteams Group · Internal operations platform']='Euroteams Group · Vidinė darbo platforma'

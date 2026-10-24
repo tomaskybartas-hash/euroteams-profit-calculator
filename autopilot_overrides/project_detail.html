@@ -25,15 +25,16 @@
 <script>
 (function(){
  const badge=document.getElementById('urgencyBadge');
+ const lt=document.documentElement.lang==='lt';
  if(badge){
    const start=new Date(badge.dataset.start+'T00:00:00');
    const today=new Date(); today.setHours(0,0,0,0);
    const days=Math.ceil((start-today)/86400000);
-   if(days<0){badge.textContent='START DATE PASSED';badge.classList.add('danger-pill');}
-   else if(days<=7){badge.textContent='CRITICAL · '+days+' DAYS';badge.classList.add('danger-pill');}
-   else if(days<=21){badge.textContent='HIGH URGENCY · '+days+' DAYS';badge.classList.add('warn');}
-   else if(days<=45){badge.textContent='ACTIVE · '+days+' DAYS';}
-   else{badge.textContent='PLANNED · '+days+' DAYS';}
+   if(days<0){badge.textContent=(lt?'PRADŽIOS DATA PRAĖJO':'START DATE PASSED');badge.classList.add('danger-pill');}
+   else if(days<=7){badge.textContent=(lt?'KRITINIS · ':'CRITICAL · ')+days+(lt?' D.':' DAYS');badge.classList.add('danger-pill');}
+   else if(days<=21){badge.textContent=(lt?'SKUBU · ':'HIGH URGENCY · ')+days+(lt?' D.':' DAYS');badge.classList.add('warn');}
+   else if(days<=45){badge.textContent=(lt?'AKTYVUS · ':'ACTIVE · ')+days+(lt?' D.':' DAYS');}
+   else{badge.textContent=(lt?'PLANUOJAMAS · ':'PLANNED · ')+days+(lt?' D.':' DAYS');}
  }
  document.querySelectorAll('.candidate-row').forEach(function(row){
    const meta=row.dataset.meta||'';
@@ -44,15 +45,15 @@
    const bt=row.querySelector('.blocker-text');
    const rt=row.querySelector('.reservation-text');
    if(bt){
-     if(blockers==='NONE'){bt.textContent='No blockers';bt.classList.remove('muted');bt.classList.add('good-text');}
+     if(blockers==='NONE'){bt.textContent=(lt?'Kliūčių nėra':'No blockers');bt.classList.remove('muted');bt.classList.add('good-text');}
      else if(blockers){bt.textContent=blockers;}
-     else{bt.textContent='Run readiness check';}
-     if(checked) bt.title='Checked '+checked.replace('T',' ');
+     else{bt.textContent=(lt?'Patikrinkite pasirengimą':'Run readiness check');}
+     if(checked) bt.title=(lt?'Patikrinta ':'Checked ')+checked.replace('T',' ');
    }
    if(rt&&until){
      const expiry=new Date(until);
      const hours=Math.max(0,Math.ceil((expiry-new Date())/3600000));
-     rt.textContent='Reservation expires in ~'+hours+'h';
+     rt.textContent=(lt?'Rezervacija galioja dar ~':'Reservation expires in ~')+hours+(lt?' val.':'h');
    }
  });
 })();
