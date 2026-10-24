@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Iterable
 
 from .worker_collector import CandidateRecord, ProjectNeed, shortlist
+import secrets
 
 
 def _set_if_present(obj, name, value):
@@ -46,6 +47,9 @@ def upsert_workers(db, Worker, records: Iterable[CandidateRecord], tenant_id: in
         worker = _find_worker(db, Worker, candidate, tenant_id)
         if worker is None:
             worker = Worker(tenant_id=tenant_id)
+            # Unknown citizenship must not inherit the legacy EU=True default.
+            _set_if_present(worker, "eu_citizen", candidate.eu_citizen is True)
+            _set_if_present(worker, "self_service_token", secrets.token_urlsafe(32))
             db.add(worker)
             created += 1
         else:
@@ -59,7 +63,8 @@ def upsert_workers(db, Worker, records: Iterable[CandidateRecord], tenant_id: in
         _set_if_present(worker, "eu_citizen", candidate.eu_citizen)
         _set_if_present(worker, "availability_status", candidate.availability_status)
         _set_if_present(worker, "available_from", candidate.available_from)
-        _set_if_present(worker, "desired_net_hourly", candidate.desired_net_hourly)
+        if candidate.desired_net_hourly is not None:
+            _set_first_present(worker, ("expected_salary_net_hour", "desired_net_hourly"), candidate.desired_net_hourly)
         _set_if_present(worker, "years_experience", candidate.years_experience)
         _set_first_present(worker, ("certificates", "certifications", "certs"), ", ".join(candidate.certificates))
         _set_first_present(worker, ("languages", "language_skills"), ", ".join(candidate.languages))
@@ -82,7 +87,7 @@ def project_need_from_model(project) -> ProjectNeed:
     certs = getattr(project, "required_certificates", None) or []
     if isinstance(certs, str):
         certs = [x.strip() for x in certs.replace(";", ",").split(",") if x.strip()]
-    langs = getattr(project, "required_languages", None) or []
+    langs = getattr(project, "required_languages", None) or getattr(project, "required_language", None) or []
     if isinstance(langs, str):
         langs = [x.strip() for x in langs.replace(";", ",").split(",") if x.strip()]
     citizenship = str(getattr(project, "citizenship_requirement", "") or "").upper()
@@ -94,7 +99,7 @@ def project_need_from_model(project) -> ProjectNeed:
         required_languages=langs,
         eu_only=citizenship == "EU",
         start_date=getattr(project, "start_date", None),
-        offered_net_hourly=getattr(project, "net_hourly", None) or getattr(project, "offered_net_hourly", None),
+        offered_net_hourly=getattr(project, "salary_net_hour", None) or getattr(project, "net_hourly", None) or getattr(project, "offered_net_hourly", None),
         min_experience_years=float(getattr(project, "min_experience_years", 0) or 0),
     )
 

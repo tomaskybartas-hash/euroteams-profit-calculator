@@ -67,7 +67,7 @@ async def collector_import(request: Request, db:Session=Depends(get_db)):
     if not csv_file or not hasattr(csv_file,"read"):raise HTTPException(400,detail="CSV file required")
     project=db.query(Project).filter(Project.id==project_id,Project.tenant_id==user.tenant_id).first()
     if not project:raise HTTPException(404)
-    raw=await csv_file.read()
+    raw=await csv_file.read(5_000_001)
     if len(raw)>5_000_000:raise HTTPException(413,detail="CSV file too large")
     try:text=raw.decode("utf-8-sig")
     except UnicodeDecodeError:raise HTTPException(400,detail="CSV must be UTF-8")
@@ -97,7 +97,7 @@ def collector_match_existing(project_id:int,request:Request,db:Session=Depends(g
     for w in workers:
         certs=_collector_values(w,("certificates","certifications","certs"))
         langs=_collector_values(w,("languages","language_skills"))
-        c=CandidateRecord(full_name=getattr(w,"full_name","") or "",country=getattr(w,"country","") or "",role=getattr(w,"profession",None) or getattr(w,"role","") or "",source="workforce-live",email=getattr(w,"email","") or "",phone=getattr(w,"phone","") or "",years_experience=float(getattr(w,"years_experience",0) or 0),certificates=certs,languages=langs,eu_citizen=getattr(w,"eu_citizen",None),availability_status=getattr(w,"availability_status","") or "UNKNOWN",available_from=getattr(w,"available_from",None),desired_net_hourly=getattr(w,"desired_net_hourly",None))
+        c=CandidateRecord(full_name=getattr(w,"full_name","") or "",country=getattr(w,"country","") or "",role=getattr(w,"profession",None) or getattr(w,"role","") or "",source="workforce-live",email=getattr(w,"email","") or "",phone=getattr(w,"phone","") or "",years_experience=float(getattr(w,"years_experience",0) or 0),certificates=certs,languages=langs,eu_citizen=getattr(w,"eu_citizen",None),availability_status=getattr(w,"availability_status","") or "UNKNOWN",available_from=getattr(w,"available_from",None),desired_net_hourly=getattr(w,"expected_salary_net_hour",None) or getattr(w,"desired_net_hourly",None))
         records.append(c);worker_map[c.fingerprint]=w
     matched=create_project_candidates(db,ProjectCandidate,project,worker_map,records,user.tenant_id)
     audit_event(db,user,"COLLECTOR_REMATCH","project",str(project.id),f"ranked={matched['ranked']}; created={matched['created']}; refreshed={matched['refreshed']}; blocked={matched['blocked']}")
