@@ -126,6 +126,16 @@ def install(app,current_user,require_roles,page_ctx):
         w=db.query(Worker).filter(Worker.id==wid,Worker.tenant_id==user.tenant_id).first()
         if not w:raise HTTPException(404,'Worker not found')
         return w
+    @app.on_event('startup')
+    def production_session_key():
+        # The bundled development key must never protect a public production session.
+        if len(os.getenv('APP_SECRET',''))<32:
+            source=os.getenv('INTAKE_FORM_SECRET','')
+            if len(source)<32:raise RuntimeError('A strong application session secret is required')
+            import app.services.auth as auth
+            from itsdangerous import URLSafeTimedSerializer
+            key=hmac.new(source.encode(),b'euroteams-session-key-v1',hashlib.sha256).hexdigest()
+            auth.serializer=URLSafeTimedSerializer(key,salt='workforce-live-session')
     # A provider must never claim a real send when no external messaging API exists.
     import app.services.messaging as messaging
     class UnconfiguredProvider(messaging.MessagingProvider):

@@ -308,7 +308,7 @@ class Translator(HTMLParser):
         if tag in ['script','style']:self.skip=max(0,self.skip-1)
     def handle_data(self,data):
         translated=translate(data,self.lang) if not self.skip else data
-        self.output.append(data if translated==data else html.escape(translated))
+        self.output.append(data if translated==data else re.match(r'^\s*',data)[0]+html.escape(translated)+re.search(r'\s*$',data)[0])
     def handle_entityref(self,name):self.output.append('&'+name+';')
     def handle_charref(self,name):self.output.append('&#'+name+';')
     def handle_comment(self,data):self.output.append('<!--'+data+'-->')
