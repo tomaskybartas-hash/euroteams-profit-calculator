@@ -1,5 +1,30 @@
 # WORKFORCE_COLLECTOR_ROUTES_V1
 
+@app.on_event("startup")
+def _collector_bootstrap_preview_admin():
+    """Create the configured preview admin once; never overwrite an existing password."""
+    from collector.bootstrap_admin import configured_admin
+    cfg=configured_admin()
+    if not cfg["enabled"]:
+        print("WORKFORCE_ADMIN_BOOTSTRAP=disabled")
+        return
+    db_gen=get_db()
+    db=next(db_gen)
+    try:
+        existing=db.query(AppUser).filter(AppUser.email==cfg["email"]).first()
+        if existing:
+            print(f"WORKFORCE_ADMIN_BOOTSTRAP=existing email={cfg['email']}")
+            return
+        admin=AppUser(tenant_id=cfg["tenant_id"],email=cfg["email"],full_name=cfg["name"],password_hash=hash_password(cfg["password"]),role="admin",active=True)
+        db.add(admin);db.commit()
+        print(f"WORKFORCE_ADMIN_BOOTSTRAP=created email={cfg['email']}")
+    except Exception as exc:
+        db.rollback()
+        print(f"WORKFORCE_ADMIN_BOOTSTRAP=error type={type(exc).__name__}")
+    finally:
+        db_gen.close()
+
+
 def _collector_values(obj, names):
     for name in names:
         value=getattr(obj,name,None)
