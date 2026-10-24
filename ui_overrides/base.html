@@ -10,6 +10,7 @@
     <a class="{% if request.url.path=='/' %}active{% endif %}" href="/"><span class="nav-icon">◫</span>Dashboard</a>
     <a class="{% if request.url.path.startswith('/workers') %}active{% endif %}" href="/workers"><span class="nav-icon">◉</span>Workers</a>
     <a class="{% if request.url.path.startswith('/projects') %}active{% endif %}" href="/projects"><span class="nav-icon">◇</span>Projects</a>
+    <a class="{% if request.url.path.startswith('/collector') %}active{% endif %}" href="/collector"><span class="nav-icon">⌕</span>Worker Collector</a>
     <a class="{% if request.url.path.startswith('/crews') %}active{% endif %}" href="/crews"><span class="nav-icon">◎</span>Crews</a>
     <a class="{% if request.url.path.startswith('/operations') %}active{% endif %}" href="/operations"><span class="nav-icon">⌁</span>Operations</a>
     <div class="nav-label">Control</div>
