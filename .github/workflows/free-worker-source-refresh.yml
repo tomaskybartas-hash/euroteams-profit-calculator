@@ -1,0 +1,29 @@
+name: Free worker source refresh
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/free-worker-source-refresh.yml']
+permissions: {}
+concurrency:
+  group: free-worker-source-refresh
+  cancel-in-progress: false
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Refresh the fixed public RSS source
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --retry 3 --retry-all-errors --retry-delay 20 --max-time 100 https://euroteams-workforce-collector-preview.onrender.com/collector/free-source/refresh --output source-result.json
+          python - <<'PY'
+          import json
+          with open('source-result.json') as source_file:
+              result = json.load(source_file)
+          print(result)
+          if result.get('status') != 'COMPLETED':
+              raise SystemExit('Public RSS refresh failed; inspect the source status')
+          PY
