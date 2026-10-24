@@ -39,6 +39,19 @@ def collector_health():
     registry=default_registry()
     return {"ok":True,"module":"worker-collector-v1","enabled_sources":[s.key for s in registry.enabled()]}
 
+@app.get("/collector/ready")
+def collector_ready(db: Session = Depends(get_db)):
+    """Verify the real database connection without exposing credentials or records."""
+    from sqlalchemy import text
+    from fastapi.responses import JSONResponse
+    try:
+        db.execute(text("SELECT 1"))
+        persistent = db.get_bind().dialect.name == "postgresql"
+    except Exception:
+        db.rollback()
+        return JSONResponse({"ok": False, "database": "unavailable", "persistent": False}, status_code=503)
+    return JSONResponse({"ok": persistent, "database": "connected", "persistent": persistent}, status_code=200 if persistent else 503)
+
 @app.get("/collector", response_class=HTMLResponse)
 def collector_center(request: Request, db: Session = Depends(get_db)):
     user=current_user(request,db)

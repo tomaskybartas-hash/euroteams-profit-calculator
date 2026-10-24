@@ -75,3 +75,42 @@ def test_unknown_citizenship_does_not_become_confirmed_eu_on_import():
         worker = upsert_workers(db, Worker, [record], tenant.id)['workers'][0]
         assert worker.eu_citizen is False
         assert worker.email == ''
+
+
+def test_readiness_rejects_temporary_database():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from sqlalchemy.pool import StaticPool
+    from app.main import get_db
+    engine = create_engine('sqlite:///:memory:', poolclass=StaticPool,
+                           connect_args={"check_same_thread": False})
+    def temporary_db():
+        with Session(engine) as db:
+            yield db
+    app.dependency_overrides[get_db] = temporary_db
+    try:
+        response = TestClient(app).get('/collector/ready')
+        assert response.status_code == 503
+        assert response.json() == {"ok": False, "database": "connected", "persistent": False}
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        engine.dispose()
+
+
+def test_readiness_does_not_expose_database_connection_errors():
+    from app.main import get_db
+    class FailedDatabase:
+        def execute(self, statement):
+            raise RuntimeError("private database connection details")
+        def rollback(self):
+            pass
+    def unavailable_db():
+        yield FailedDatabase()
+    app.dependency_overrides[get_db] = unavailable_db
+    try:
+        response = TestClient(app).get('/collector/ready')
+        assert response.status_code == 503
+        assert response.json()["database"] == "unavailable"
+        assert "private" not in response.text
+    finally:
+        app.dependency_overrides.pop(get_db, None)
