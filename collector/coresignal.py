@@ -59,14 +59,24 @@ def query():
 def professional_values(profile):
     if not isinstance(profile, dict):
         raise ValueError('invalid_profile')
+    if isinstance(profile.get('data'), dict):
+        profile = profile['data']
     name = str(profile.get('full_name') or '').strip()
-    country = canonical_country(profile.get('location_country_iso2') or profile.get('location_country') or '')
-    title = str(profile.get('active_experience_title') or profile.get('headline') or '').strip()
+    country = canonical_country(profile.get('location_country_iso2') or profile.get('location_country') or profile.get('country') or '')
+    title = str(profile.get('active_experience_title') or profile.get('headline') or profile.get('title') or '').strip()
     role = canonical_role(title)
-    url = str(profile.get('professional_network_url') or '').strip()
+    url = str(profile.get('professional_network_url') or profile.get('linkedin_url') or '').strip()
+    if url.startswith(('www.linkedin.com/', 'linkedin.com/')):
+        url = 'https://' + url
+    if url.startswith('http://www.linkedin.com/') or url.startswith('http://linkedin.com/'):
+        url = 'https://' + url.split('://', 1)[1]
     parsed = urlparse(url)
-    if not name or len(name) > 160 or country not in SUPPORTED_COUNTRIES or role not in TRADES:
-        raise ValueError('profile_outside_scope')
+    if not name or len(name) > 160:
+        raise ValueError('profile_name_missing')
+    if country not in SUPPORTED_COUNTRIES:
+        raise ValueError('profile_country_outside_scope')
+    if role not in TRADES:
+        raise ValueError('profile_trade_outside_scope')
     if parsed.scheme != 'https' or not parsed.netloc or parsed.username or len(url) > 500:
         raise ValueError('missing_source_url')
     languages = [str(x.get('language', '')) for x in profile.get('languages', []) if isinstance(x, dict)]
@@ -141,9 +151,11 @@ def acquire(db, tenant_id, run_key, limit=3, client=None):
                                entity_type='worker', entity_id=str(worker.id), details=f'source=coresignal; source_id={source_id}; verification=UNCONFIRMED'))
                 run.added += 1; db.commit()
             except (httpx.HTTPError, ValueError) as exc:
+                if isinstance(exc, ValueError) and isinstance(data, dict):
+                    print('CORESIGNAL_PROFILE_SHAPE=' + ','.join(sorted(str(k)[:40] for k in data.keys())[:25]), flush=True)
                 db.rollback(); run = db.get(SourceRun, run_id)
                 run.errors += 1
-                code = f'HTTP_{exc.response.status_code}' if isinstance(exc, httpx.HTTPStatusError) else type(exc).__name__
+                code = f'HTTP_{exc.response.status_code}' if isinstance(exc, httpx.HTTPStatusError) else (str(exc) if isinstance(exc, ValueError) and str(exc) in {'invalid_profile', 'profile_name_missing', 'profile_country_outside_scope', 'profile_trade_outside_scope', 'missing_source_url'} else type(exc).__name__)
                 run.error_code = code; db.commit()
                 if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (401, 402, 403, 429):
                     break
@@ -184,7 +196,7 @@ def install(app):
         def execute():
             with SessionLocal() as db:
                 try:
-                    acquire(db, int(os.getenv('WORKFORCE_ADMIN_TENANT_ID', '1')), 'initial-coresignal-trial-v1', 3)
+                    acquire(db, int(os.getenv('WORKFORCE_ADMIN_TENANT_ID', '1')), 'initial-coresignal-trial-v2', 3)
                 except Exception as exc:
                     print('CORESIGNAL_BOOTSTRAP_ERROR=' + type(exc).__name__)
         threading.Thread(target=execute, name='coresignal-initial-trial', daemon=True).start()
