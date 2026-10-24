@@ -144,3 +144,20 @@ def collected_profiles(request: Request, page: int = 1, db: Session = Depends(ge
 
 from collector.free_sources import install as _install_free_sources
 _install_free_sources(app,current_user,require_roles,page_ctx)
+
+# Recruiter workspace routes, durable contact history, LT/EN account preferences.
+from collector.platform import install as _install_worker_platform
+_install_worker_platform(app,current_user,require_roles,page_ctx)
+
+# Never create demonstration people on a new production database.
+def seed_if_empty():
+    db=SessionLocal()
+    try:
+        if not db.query(Tenant).first():
+            db.add(Tenant(name='Euroteams Group'));db.commit()
+    finally:db.close()
+
+from collector.platform import csrf as _platform_csrf
+def _platform_template_context(request):
+    return {"platform_csrf":_platform_csrf(request) if request.cookies.get("wl_session") else ""}
+templates.context_processors.append(_platform_template_context)

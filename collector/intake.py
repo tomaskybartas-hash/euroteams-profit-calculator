@@ -18,7 +18,7 @@ from .worker_collector import CandidateRecord, canonical_country, canonical_role
 from .workforce_bridge import create_project_candidates
 
 PRIVACY_VERSION = 'candidate-intake-v1'
-ROLES = {'welder', 'pipefitter', 'metal fitter', 'mechanic', 'carpenter', 'mason', 'electrician', 'scaffolder'}
+ROLES = {'welder', 'pipefitter', 'metal fitter', 'mechanic', 'carpenter', 'mason', 'electrician', 'scaffolder', 'general labour', 'other'}
 
 class CandidateIntake(Base):
     __tablename__ = 'collector_intakes'

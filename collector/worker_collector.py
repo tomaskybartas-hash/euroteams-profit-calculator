@@ -13,6 +13,10 @@ COUNTRY_ALIASES={
  "IT":{"it","italy","italia","italija"},
 }
 ROLE_ALIASES={
+ "general labour":{"general labour","general labor","unskilled","helper","nekvalifikuota","pagalbinis"},
+ "mason":{"mason","bricklayer","murininkas","mūrininkas"},
+ "scaffolder":{"scaffolder","pastolininkas"},
+ "other":{"other","kita"},
  "welder":{"welder","welding","suvirintojas","spawacz","sudor","saldatore"},
  "pipefitter":{"pipefitter","pipe fitter","rigger tubero","monter rurociagow","monter rurociągów"},
  "metal fitter":{"metal fitter","assembly fitter","mechanical fitter","steel fitter","monter konstrukcji"},
