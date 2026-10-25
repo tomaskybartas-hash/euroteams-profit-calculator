@@ -249,7 +249,7 @@ def install(app,current_user,require_roles,page_ctx):
         if not job_id and len(jobs)==1:job=jobs[0]
         meta=db.get(WorkerContact,w.id);number=whatsapp_number(w,meta)
         channel=channel if channel in ['WhatsApp','Email'] else ('WhatsApp' if number else 'Email')
-        recent=db.query(ContactHistory).filter(ContactHistory.worker_id==w.id,ContactHistory.project_id==job.id).order_by(ContactHistory.created_at.desc()).first() if job else None
+        recent=db.query(ContactHistory).filter(ContactHistory.worker_id==w.id,ContactHistory.project_id==job.id).order_by((ContactHistory.status=='CONTACTED').desc(),ContactHistory.created_at.desc()).first() if job else None
         return render(request,user,'platform_request.html',worker=w,jobs=jobs,job=job,number=number,channel=channel,email=w.email,allowed=consent_allowed(db,w.id,channel),body=render_offer(w,job,language(request)) if job else '',recent=recent,history=None,nonce=secrets.token_urlsafe(24))
 
     @app.post('/workers/{worker_id}/request',response_class=HTMLResponse)
@@ -267,7 +267,7 @@ def install(app,current_user,require_roles,page_ctx):
         if not consent_allowed(db,w.id,channel):raise HTTPException(403,channel+' job-offer permission is required')
         # Serialize each worker's draft creation across recruiters on PostgreSQL.
         if db.get_bind().dialect.name=='postgresql':db.query(Worker).filter(Worker.id==w.id).with_for_update().first()
-        recent=db.query(ContactHistory).filter(ContactHistory.worker_id==w.id,ContactHistory.project_id==job.id,or_(ContactHistory.status=='CONTACTED',(ContactHistory.created_at>datetime.utcnow()-timedelta(hours=24)) & (ContactHistory.channel==channel))).order_by(ContactHistory.created_at.desc()).first()
+        recent=db.query(ContactHistory).filter(ContactHistory.worker_id==w.id,ContactHistory.project_id==job.id,or_(ContactHistory.status=='CONTACTED',(ContactHistory.created_at>datetime.utcnow()-timedelta(hours=24)) & (ContactHistory.channel==channel))).order_by((ContactHistory.status=='CONTACTED').desc(),ContactHistory.created_at.desc()).first()
         history=recent
         if not history:
             nonce=str(form.get('nonce',''))

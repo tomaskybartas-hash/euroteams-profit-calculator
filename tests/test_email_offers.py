@@ -40,3 +40,17 @@ def test_daily_target_excludes_demo_ads_and_snapshots_previous_day(setup):
         save_previous_day(db,1);save_previous_day(db,1)
         assert db.query(DailyAcquisitionReport).count()==1
     assert '1 / 300' in client.get('/').text
+
+
+def test_old_confirmed_offer_blocks_cross_channel_even_with_newer_draft(setup):
+    from datetime import datetime,timedelta
+    client,engine=setup
+    with Session(engine) as db:
+        db.add_all([ContactHistory(tenant_id=1,worker_id=1,project_id=1,actor_id=1,nonce='confirmedoldnonce1234567890',channel='Email',status='CONTACTED',created_at=datetime.utcnow()-timedelta(days=7)),ContactHistory(tenant_id=1,worker_id=1,project_id=1,actor_id=1,nonce='newdraftnonce12345678901234',channel='WhatsApp')]);db.commit()
+    page=client.get('/workers/1/request?job_id=1').text
+    assert 'Already contacted' in page
+    csrf=hidden(client.get('/workers/1/contact-history').text,'csrf')
+    r=client.post('/workers/1/request',data={'csrf':csrf,'job_id':'1','nonce':'othernonce1234567890123456','channel':'WhatsApp'})
+    assert 'Already contacted' in r.text
+    assert 'href="https://wa.me/' not in r.text
+    with Session(engine) as db:assert db.query(ContactHistory).count()==2
