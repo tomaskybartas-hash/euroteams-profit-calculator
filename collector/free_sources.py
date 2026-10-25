@@ -101,7 +101,7 @@ def fresh_leads(db,tenant_id,now=None):
         or_(FreeLead.published_at.is_(None),FreeLead.published_at>=cutoff))
 
 
-def refresh(db, tenant_id=1, client=None):
+def refresh(db, tenant_id=1, client=None, force=False):
     if db.get_bind().dialect.name=='postgresql':
         db.execute(text('SELECT pg_advisory_xact_lock(64132972)'))
     state=db.get(FreeSourceState,STATE_ID)
@@ -115,6 +115,7 @@ def refresh(db, tenant_id=1, client=None):
             interrupted.seconds=max(0,(now-interrupted.started_at).total_seconds())
         state.status='FAILED';state.error='INTERRUPTED'
     cooldown=timedelta(minutes=15) if state.status in ['FAILED','DEGRADED'] else timedelta(hours=4)
+    if force:cooldown=timedelta(minutes=15)
     if state.checked_at and now-state.checked_at<cooldown:
         result={'status':state.status,'cached':True,'found':state.found,'added':state.added,'duplicates':state.duplicates,'error':state.error}
         db.commit();return result

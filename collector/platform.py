@@ -377,3 +377,11 @@ def install(app,current_user,require_roles,page_ctx):
         user=user_for(request,db);worker=worker_for(db,worker_id,user)
         evidence=db.query(SourceProfile).filter(SourceProfile.worker_id==worker.id,SourceProfile.tenant_id==user.tenant_id).first()
         return render(request,user,'worker_detail.html',worker=worker,source_url=evidence.source_url if evidence else '',confidence='—' if not worker.last_availability_confirmed else 'Confirmed date: '+str(worker.last_availability_confirmed),documents=db.query(WorkerDocument).filter(WorkerDocument.worker_id==worker.id).all(),messages=db.query(Message).filter(Message.worker_id==worker.id).order_by(Message.created_at.desc()).limit(20).all(),events=db.query(AvailabilityEvent).filter(AvailabilityEvent.worker_id==worker.id).order_by(AvailabilityEvent.created_at.desc()).limit(20).all(),consents=db.query(Consent).filter(Consent.worker_id==worker.id).order_by(Consent.created_at.desc()).all())
+
+    @app.post('/collector/free-source/run')
+    async def manual_collection(request:Request,db:Session=Depends(get_db)):
+        user=user_for(request,db);require_roles(user,'admin')
+        form=await request.form();verify_csrf(request,form)
+        from collector.free_sources import refresh
+        refresh(db,user.tenant_id,force=True)
+        return RedirectResponse('/sources',303)

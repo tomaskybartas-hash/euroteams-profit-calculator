@@ -77,3 +77,33 @@ def test_sources_history_is_tenant_scoped_and_eures_is_not_claimed_connected(set
 
 def test_html_cannot_be_mistaken_for_a_healthy_rss_feed():
     with pytest.raises(ValueError):parse_feed(b'<html><body>Not an RSS feed</body></html>')
+
+def test_manual_refresh_keeps_rate_limit_and_reuses_existing_ads(setup):
+    _,engine=setup;calls=[]
+    def handler(request):
+        calls.append(str(request.url));return httpx.Response(200,content=feed())
+    with Session(engine) as db,httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        refresh(db,1,client)
+        assert refresh(db,1,client,force=True)['cached'] is True
+        assert len(calls)==4
+        state=db.get(FreeSourceState,STATE_ID);state.checked_at-=timedelta(hours=1);db.commit()
+        assert refresh(db,1,client)['cached'] is True
+        assert refresh(db,1,client,force=True)['duplicates']==1
+        assert len(calls)==8 and db.query(FreeCollectionRun).count()==2
+
+
+def test_manual_refresh_requires_admin_and_csrf(setup,monkeypatch):
+    client,engine=setup
+    from test_platform_flow import hidden
+    from app.models import AppUser
+    import collector.free_sources as source
+    calls=[]
+    monkeypatch.setattr(source,'refresh',lambda db,tenant_id,force=False:calls.append((tenant_id,force)))
+    assert client.post('/collector/free-source/run',data={}).status_code==403
+    token=hidden(client.get('/sources').text,'csrf')
+    assert client.post('/collector/free-source/run',data={'csrf':token},follow_redirects=False).status_code==303
+    assert calls==[(1,True)]
+    with Session(engine) as db:
+        db.get(AppUser,1).role='viewer';db.commit()
+    assert client.post('/collector/free-source/run',data={'csrf':token}).status_code==403
+    assert calls==[(1,True)]
