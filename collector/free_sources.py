@@ -174,7 +174,11 @@ def install(app,current_user,require_roles,page_ctx):
     def refresh_public_cache(db=Depends(get_db)):
         # Fixed public feed only; no arbitrary URLs or submitted candidate data.
         # Durable four-hour cache bounds requests even when this URL is repeatedly visited.
-        return refresh(db,int(os.getenv('WORKFORCE_ADMIN_TENANT_ID','1')))
+        tid=int(os.getenv('WORKFORCE_ADMIN_TENANT_ID','1'))
+        result=refresh(db,tid)
+        from collector.acquisition_metrics import save_previous_day
+        save_previous_day(db,tid)
+        return result
 
     @app.get('/collector/free-leads',response_class=HTMLResponse)
     def leads(request:Request,page:int=1,db=Depends(get_db)):

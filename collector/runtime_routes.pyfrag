@@ -167,3 +167,8 @@ _install_database_transfer(app)
 
 from collector.offer_responses import install as _install_offer_responses
 _install_offer_responses(app,current_user,require_roles)
+
+from collector.acquisition_metrics import DailyAcquisitionReport
+
+from collector.acquisition_metrics import install as _install_acquisition_reports
+_install_acquisition_reports(app,current_user,require_roles)

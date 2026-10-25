@@ -6,7 +6,26 @@ from fastapi.responses import RedirectResponse,Response
 from app.db import SessionLocal,get_db
 
 # Translation keys also cover the legacy administration and document templates.
-PAIRS='''Candidate responses|Kandidatų atsakymai
+PAIRS='''Daily collection reports|Dienos rinkimo ataskaitos
+Saved daily totals for new worker profiles. Ads are excluded. Reports start when this feature is enabled; unsupported metrics are not invented.|Išsaugotos naujų darbuotojų profilių dienos suvestinės. Skelbimai neįtraukiami. Ataskaitos kaupiamos nuo funkcijos įjungimo; nematuojami rodikliai neišgalvojami.
+No daily reports yet|Dienos ataskaitų dar nėra
+Response|Atsakymas
+Daily target|Dienos tikslas
+New unique worker profiles only. Advertisements are excluded.|Tik nauji unikalūs darbuotojų profiliai. Skelbimai neįskaičiuojami.
+Insufficient source coverage|Nepakanka kandidatų surinkimo šaltinių
+Target reached|Tikslas pasiektas
+New WhatsApp contacts|Nauji WhatsApp kontaktai
+New email contacts|Nauji el. pašto kontaktai
+Unique profiles per elapsed hour today|Unikalių profilių per praėjusią šios dienos valandą
+WhatsApp Contacts|WhatsApp kontaktai
+Email Contacts|El. pašto kontaktai
+Email job-offer permission is required|Reikalingas leidimas siųsti darbo pasiūlymus el. paštu
+Add a valid email address|Įveskite tinkamą el. pašto adresą
+Send by Email|Siųsti el. paštu
+Prepare email|Paruošti el. laišką
+Already contacted|Jau kontaktuota
+Nothing has been sent. Open your email app and press Send there.|Laiškas dar neišsiųstas. Atidarykite el. pašto programą ir joje paspauskite Siųsti.
+Candidate responses|Kandidatų atsakymai
 Job offer|Darbo pasiūlymas
 net per hour|į rankas už valandą
 Your answer was received|Jūsų atsakymas gautas
