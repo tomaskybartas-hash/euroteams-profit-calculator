@@ -315,3 +315,21 @@ def test_free_rss_rejects_entities_and_does_not_import_as_workers(intake_client)
     with pytest.raises(ValueError):parse_feed(b'<!DOCTYPE foo><rss/>')
     with Session(engine) as db:
         assert db.query(Worker).count()==0
+
+
+def test_registration_error_preserves_values_safely_and_allows_retry(intake_client):
+    from bs4 import BeautifulSoup
+    client, engine = intake_client
+    data = registration_form(client, full_name='<script>alert(1)</script>', salary='nan', offers='yes', whatsapp_offers='yes')
+    response = client.post('/join', data=data)
+    assert response.status_code == 422
+    soup = BeautifulSoup(response.text, 'html.parser')
+    assert soup.find('input', {'name': 'full_name'})['value'] == data['full_name']
+    assert soup.find('script') is None
+    assert soup.find('select', {'name': 'profession'}).find('option', selected=True)['value'] == 'welder'
+    assert soup.find('input', {'name': 'whatsapp_offers'})['value'] == 'yes'
+    assert soup.find('input', {'name': 'whatsapp_offers'}).has_attr('checked')
+    data['token'] = soup.find('input', {'name': 'token'})['value']
+    data['full_name'] = 'QA Retry Applicant'
+    data['salary'] = '21'
+    assert client.post('/join', data=data, follow_redirects=False).status_code == 303

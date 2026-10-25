@@ -148,9 +148,9 @@ def install(app):
             raise HTTPException(503, 'Recruitment workspace is not available')
         return tid
 
-    def render(request, error=None, status=200):
+    def render(request, error=None, status=200, values=None):
         token = signer().dumps({'nonce': secrets.token_urlsafe(24)})
-        response = views.TemplateResponse(request, 'join.html', {'request': request, 'token': token, 'error': error}, status_code=status)
+        response = views.TemplateResponse(request, 'join.html', {'request': request, 'token': token, 'error': error, 'values': values or {}}, status_code=status)
         response.set_cookie('intake_form', token, httponly=True, secure=request.url.scheme == 'https', samesite='lax', max_age=3600, path='/join')
         response.headers['Cache-Control'] = 'no-store'
         return response
@@ -205,11 +205,11 @@ def install(app):
         try:
             values = validate_input(form)
         except (ValueError, OverflowError) as exc:
-            return render(request, str(exc), 422)
+            return render(request, str(exc), 422, form)
         try:
             whatsapp_permission=form.get('whatsapp_offers')=='yes'
             if whatsapp_permission and not re.fullmatch(r'\+[1-9][0-9]{7,14}',values['phone']):
-                return render(request,'Enter a valid WhatsApp number including country code',422)
+                return render(request,'Enter a valid WhatsApp number including country code',422,form)
             result = collect(db, values, nonce, tid, form.get('offers') == 'yes', key,whatsapp_permission)
         except IntegrityError:
             db.rollback()

@@ -6,7 +6,8 @@ from fastapi.responses import RedirectResponse,Response
 from app.db import SessionLocal,get_db
 
 # Translation keys also cover the legacy administration and document templates.
-PAIRS='''Dashboard|Apžvalga
+PAIRS='''Choose availability|Pasirinkite, kada galite pradėti
+Dashboard|Apžvalga
 Workers|Darbuotojai
 Jobs|Darbai
 Matches|Atitikmenys
