@@ -13,7 +13,7 @@ from app.db import Base, get_db
 from app.models import Worker, Project, ProjectCandidate, Consent, Message, Tenant, AppUser
 from collector.intake import CandidateIntake, signer
 from collector.coresignal import SourceProfile
-from collector.free_sources import FreeLead, FreeSourceState, STATE_ID
+from collector.free_sources import FreeLead, FreeSourceState, FreeCollectionRun, fresh_leads, STATE_ID
 
 SEGMENTS={'general':'General Labour','welder':'Welders','pipefitter':'Pipefitters','fitter':'Fitters','mechanic':'Mechanics','carpenter':'Carpenters','mason':'Masons','electrician':'Electricians','scaffolder':'Scaffolders','other':'Other'}
 STATUSES=['New','Available','Contacted','Interested','Not Interested','In Process','Hired','Unavailable','Stale']
@@ -191,7 +191,7 @@ def install(app,current_user,require_roles,page_ctx):
         jobs=db.query(Project).filter(Project.tenant_id==user.tenant_id,Project.status!='CLOSED').all()
         contacts=db.query(ContactHistory).filter(ContactHistory.tenant_id==user.tenant_id)
         stats={'Total Workers':len(rows),'Available Workers':sum(w.availability_status=='AVAILABLE NOW' for w in rows),'New Today':sum(local_date(w.created_at)==local_now.date() for w in rows),'New This Week':sum(w.created_at>=now-timedelta(days=7) for w in rows),'Contacted':contacts.filter(ContactHistory.status=='CONTACTED').count(),'Interested':db.query(WorkerContact).join(Worker,Worker.id==WorkerContact.worker_id).filter(Worker.tenant_id==user.tenant_id,WorkerContact.status=='Interested').count(),'Active Jobs':len(jobs),'Matches':db.query(ProjectCandidate).join(Project).filter(Project.tenant_id==user.tenant_id,Project.status!='CLOSED').count()}
-        return render(request,user,'platform_dashboard.html',next_run=next_tick.replace(tzinfo=timezone.utc).astimezone(ZoneInfo('Europe/Vilnius')).strftime('%Y-%m-%d %H:%M %Z'),stats=stats,counts=counts,jobs=jobs[:6],state=db.get(FreeSourceState,STATE_ID),leads=db.query(FreeLead).filter(FreeLead.tenant_id==user.tenant_id).count())
+        return render(request,user,'platform_dashboard.html',next_run=next_tick.replace(tzinfo=timezone.utc).astimezone(ZoneInfo('Europe/Vilnius')).strftime('%Y-%m-%d %H:%M %Z'),stats=stats,counts=counts,jobs=jobs[:6],state=db.get(FreeSourceState,STATE_ID),leads=fresh_leads(db,user.tenant_id).count())
 
     @app.get('/workers',response_class=HTMLResponse)
     def workers(request:Request,db:Session=Depends(get_db)):
@@ -313,7 +313,7 @@ def install(app,current_user,require_roles,page_ctx):
     @app.get('/sources',response_class=HTMLResponse)
     def sources(request:Request,db:Session=Depends(get_db)):
         user=user_for(request,db)
-        return render(request,user,'platform_sources.html',state=db.get(FreeSourceState,STATE_ID),lead_count=db.query(FreeLead).filter(FreeLead.tenant_id==user.tenant_id).count(),registrations=db.query(CandidateIntake).filter(CandidateIntake.tenant_id==user.tenant_id,CandidateIntake.status=='CREATED').count())
+        return render(request,user,'platform_sources.html',state=db.get(FreeSourceState,STATE_ID),runs=db.query(FreeCollectionRun).filter(FreeCollectionRun.tenant_id==user.tenant_id).order_by(FreeCollectionRun.id.desc()).limit(20).all(),lead_count=fresh_leads(db,user.tenant_id).count(),registrations=db.query(CandidateIntake).filter(CandidateIntake.tenant_id==user.tenant_id,CandidateIntake.status=='CREATED').count())
 
     @app.get('/settings',response_class=HTMLResponse)
     def settings(request:Request,db:Session=Depends(get_db)):

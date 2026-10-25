@@ -7,7 +7,7 @@ import html
 import re
 import xml.etree.ElementTree as ET
 import httpx
-from sqlalchemy import Integer, String, DateTime, ForeignKey, text
+from sqlalchemy import Integer, String, DateTime, ForeignKey, Float, text, or_
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db import Base, SessionLocal
 
@@ -52,6 +52,7 @@ def parse_feed(raw,category="welder"):
     if len(raw)>1_000_000 or b'<!DOCTYPE' in raw.upper() or b'<!ENTITY' in raw.upper():
         raise ValueError('unsupported_feed')
     root=ET.fromstring(raw)
+    if root.tag.lower()!='rss' or root.find('channel') is None:raise ValueError('unsupported_feed')
     results=[]
     seen=set()
     for item in root.findall('./channel/item')[:100]:
@@ -78,6 +79,28 @@ def parse_feed(raw,category="welder"):
     return results
 
 
+class FreeCollectionRun(Base):
+    __tablename__='collector_free_runs'
+    id: Mapped[int]=mapped_column(Integer,primary_key=True)
+    tenant_id: Mapped[int]=mapped_column(ForeignKey('tenants.id'),index=True)
+    status: Mapped[str]=mapped_column(String(40),default='RUNNING',index=True)
+    started_at: Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow,index=True)
+    finished_at: Mapped[datetime | None]=mapped_column(DateTime,nullable=True)
+    seconds: Mapped[float]=mapped_column(Float,default=0)
+    successful_sources: Mapped[int]=mapped_column(Integer,default=0)
+    found: Mapped[int]=mapped_column(Integer,default=0)
+    added: Mapped[int]=mapped_column(Integer,default=0)
+    duplicates: Mapped[int]=mapped_column(Integer,default=0)
+    error: Mapped[str]=mapped_column(String(200),default='')
+
+
+def fresh_leads(db,tenant_id,now=None):
+    cutoff=(now or datetime.utcnow())-timedelta(days=30)
+    return db.query(FreeLead).filter(FreeLead.tenant_id==tenant_id,
+        FreeLead.last_seen_at>=cutoff,
+        or_(FreeLead.published_at.is_(None),FreeLead.published_at>=cutoff))
+
+
 def refresh(db, tenant_id=1, client=None):
     if db.get_bind().dialect.name=='postgresql':
         db.execute(text('SELECT pg_advisory_xact_lock(64132972)'))
@@ -85,15 +108,23 @@ def refresh(db, tenant_id=1, client=None):
     if state is None:
         state=FreeSourceState(id=STATE_ID);db.add(state);db.flush()
     now=datetime.utcnow()
-    cooldown=timedelta(minutes=15) if state.status=='FAILED' else timedelta(hours=4)
+    # An instance can stop mid-run. A stale RUNNING flag must not block the next run for four hours.
+    if state.status=='RUNNING' and state.checked_at and now-state.checked_at>timedelta(minutes=10):
+        for interrupted in db.query(FreeCollectionRun).filter(FreeCollectionRun.tenant_id==tenant_id,FreeCollectionRun.status=='RUNNING').all():
+            interrupted.status='FAILED';interrupted.error='INTERRUPTED';interrupted.finished_at=now
+            interrupted.seconds=max(0,(now-interrupted.started_at).total_seconds())
+        state.status='FAILED';state.error='INTERRUPTED'
+    cooldown=timedelta(minutes=15) if state.status in ['FAILED','DEGRADED'] else timedelta(hours=4)
     if state.checked_at and now-state.checked_at<cooldown:
-        result={'status':state.status,'cached':True,'found':state.found,'added':state.added}
+        result={'status':state.status,'cached':True,'found':state.found,'added':state.added,'duplicates':state.duplicates,'error':state.error}
         db.commit();return result
-    state.checked_at=now;state.status='RUNNING';state.error='';db.commit()
+    run=FreeCollectionRun(tenant_id=tenant_id,started_at=now)
+    db.add(run);state.checked_at=now;state.status='RUNNING';state.error='';db.commit()
+    run_id=run.id
     own=client is None
     if own:client=httpx.Client(timeout=20,follow_redirects=False,headers={'User-Agent':'EuroteamsRSSReader/1.0 (recruitment feed reader)'})
     try:
-        entries=[];feed_errors=[]
+        entries=[];feed_errors=[];successful=0
         for category in FEEDS:
             try:
                 url='https://www.ss.com/ru/work/i-search-for-work/'+category+'/rss/'
@@ -103,7 +134,7 @@ def refresh(db, tenant_id=1, client=None):
                     for chunk in response.iter_bytes():
                         raw.extend(chunk)
                         if len(raw)>1_000_000:raise ValueError('feed_too_large')
-                entries.extend(parse_feed(bytes(raw),category))
+                entries.extend(parse_feed(bytes(raw),category));successful+=1
             except (httpx.HTTPError,ValueError,ET.ParseError) as exc:
                 feed_errors.append(category+':'+(str(exc.response.status_code) if isinstance(exc,httpx.HTTPStatusError) else type(exc).__name__))
         state.found=len(entries);state.added=0;state.duplicates=0
@@ -114,15 +145,22 @@ def refresh(db, tenant_id=1, client=None):
             else:
                 db.add(FreeLead(tenant_id=tenant_id,**entry));state.added+=1
         state.error=','.join(feed_errors)[:80]
-        state.status=('DEGRADED' if entries else 'FAILED') if feed_errors else 'COMPLETED'
+        # A healthy empty feed is successful; a failed category is degraded even if no ads match.
+        state.status=('DEGRADED' if successful else 'FAILED') if feed_errors else 'COMPLETED'
+        run.status=state.status;run.successful_sources=successful;run.found=state.found
+        run.added=state.added;run.duplicates=state.duplicates;run.error=','.join(feed_errors)[:200]
+        run.finished_at=datetime.utcnow();run.seconds=max(0,(run.finished_at-run.started_at).total_seconds())
         db.commit()
     except Exception as exc:
-        db.rollback();state=db.get(FreeSourceState,STATE_ID);state.status='FAILED'
+        db.rollback();state=db.get(FreeSourceState,STATE_ID);state.status='FAILED';state.found=0;state.added=0;state.duplicates=0
         state.error=f'HTTP_{exc.response.status_code}' if isinstance(exc,httpx.HTTPStatusError) else type(exc).__name__
+        run=db.get(FreeCollectionRun,run_id);run.status='FAILED';run.error=state.error
+        run.finished_at=datetime.utcnow();run.seconds=max(0,(run.finished_at-run.started_at).total_seconds())
         db.commit()
     finally:
         if own:client.close()
-    return {'status':state.status,'found':state.found,'added':state.added,'duplicates':state.duplicates,'error':state.error}
+    return {'status':state.status,'found':state.found,'added':state.added,'duplicates':state.duplicates,'error':state.error,
+            'run_id':run.id,'seconds':round(run.seconds,3),'active_sources':run.successful_sources}
 
 
 def install(app,current_user,require_roles,page_ctx):
@@ -143,7 +181,7 @@ def install(app,current_user,require_roles,page_ctx):
         if not user:return RedirectResponse('/login',303)
         require_roles(user,'admin','recruiter')
         page=max(1,min(page,100000))
-        rows=db.query(FreeLead).filter(FreeLead.tenant_id==user.tenant_id).order_by(FreeLead.id.desc()).offset((page-1)*20).limit(21).all()
+        rows=fresh_leads(db,user.tenant_id).order_by(FreeLead.id.desc()).offset((page-1)*20).limit(21).all()
         state=db.get(FreeSourceState,STATE_ID)
         views=Jinja2Templates(directory=[str(Path(__file__).parents[1]/'app'/'templates'),str(Path(__file__).parent/'templates')])
         return views.TemplateResponse(request,'free_leads.html',page_ctx(request,user,rows=rows[:20],has_more=len(rows)>20,page=page,state=state))
