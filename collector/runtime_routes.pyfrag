@@ -164,3 +164,6 @@ templates.context_processors.append(_platform_template_context)
 
 from collector.database_transfer import install as _install_database_transfer
 _install_database_transfer(app)
+
+from collector.offer_responses import install as _install_offer_responses
+_install_offer_responses(app,current_user,require_roles)

@@ -190,7 +190,10 @@ def install(app,current_user,require_roles,page_ctx):
         for w in rows:counts[segment(w)]+=1
         jobs=db.query(Project).filter(Project.tenant_id==user.tenant_id,Project.status!='CLOSED').all()
         contacts=db.query(ContactHistory).filter(ContactHistory.tenant_id==user.tenant_id)
-        stats={'Total Workers':len(rows),'Available Workers':sum(w.availability_status=='AVAILABLE NOW' for w in rows),'New Today':sum(local_date(w.created_at)==local_now.date() for w in rows),'New This Week':sum(w.created_at>=now-timedelta(days=7) for w in rows),'Contacted':contacts.filter(ContactHistory.status=='CONTACTED').count(),'Interested':db.query(WorkerContact).join(Worker,Worker.id==WorkerContact.worker_id).filter(Worker.tenant_id==user.tenant_id,WorkerContact.status=='Interested').count(),'Active Jobs':len(jobs),'Matches':db.query(ProjectCandidate).join(Project).filter(Project.tenant_id==user.tenant_id,Project.status!='CLOSED').count()}
+        from collector.offer_responses import OfferResponse
+        interested={wid for (wid,) in db.query(WorkerContact.worker_id).join(Worker,Worker.id==WorkerContact.worker_id).filter(Worker.tenant_id==user.tenant_id,WorkerContact.status=='Interested').all()}
+        interested.update(wid for (wid,) in db.query(OfferResponse.worker_id).join(Worker,Worker.id==OfferResponse.worker_id).filter(OfferResponse.tenant_id==user.tenant_id,Worker.tenant_id==user.tenant_id,OfferResponse.answer=='INTERESTED').all())
+        stats={'Total Workers':len(rows),'Available Workers':sum(w.availability_status=='AVAILABLE NOW' for w in rows),'New Today':sum(local_date(w.created_at)==local_now.date() for w in rows),'New This Week':sum(w.created_at>=now-timedelta(days=7) for w in rows),'Contacted':contacts.filter(ContactHistory.status=='CONTACTED').count(),'Interested':len(interested),'Active Jobs':len(jobs),'Matches':db.query(ProjectCandidate).join(Project).filter(Project.tenant_id==user.tenant_id,Project.status!='CLOSED').count()}
         return render(request,user,'platform_dashboard.html',next_run=next_tick.replace(tzinfo=timezone.utc).astimezone(ZoneInfo('Europe/Vilnius')).strftime('%Y-%m-%d %H:%M %Z'),stats=stats,counts=counts,jobs=jobs[:6],state=db.get(FreeSourceState,STATE_ID),leads=fresh_leads(db,user.tenant_id).count())
 
     @app.get('/workers',response_class=HTMLResponse)
@@ -223,12 +226,15 @@ def install(app,current_user,require_roles,page_ctx):
         if f.get('segment'):rows=[w for w in rows if segment(w)==f['segment']]
         if f.get('source'):rows=[w for w in rows if source(w)==f['source']]
         contacts={c.worker_id:c for c in db.query(WorkerContact).join(Worker,Worker.id==WorkerContact.worker_id).filter(Worker.tenant_id==user.tenant_id).all()}
-        if f.get('status'):rows=[w for w in rows if (contacts[w.id].status if w.id in contacts else 'New')==f['status']]
+        from collector.offer_responses import OfferResponse
+        interested_ids={wid for (wid,) in db.query(OfferResponse.worker_id).filter(OfferResponse.tenant_id==user.tenant_id,OfferResponse.answer=='INTERESTED').all()}
+        if f.get('status')=='Interested':rows=[w for w in rows if w.id in interested_ids or (w.id in contacts and contacts[w.id].status=='Interested')]
+        elif f.get('status'):rows=[w for w in rows if (contacts[w.id].status if w.id in contacts else 'New')==f['status']]
         if f.get('quality'):
             from collector.matching import completeness
             rows=[w for w in rows if completeness(w)>=int(f['quality'])]
         total=len(rows);rows=rows[(page-1)*30:page*30]
-        return render(request,user,'platform_workers.html',workers=rows,filters=f,counts=counts,total=total,page=page,has_more=total>page*30,source=source,sourced=sourced,contacts=contacts,wa=whatsapp_number,statuses=STATUSES,countries=sorted({w.country for w in all_rows}),page_query=urlencode({k:v for k,v in f.items() if k!='page'}))
+        return render(request,user,'platform_workers.html',workers=rows,filters=f,counts=counts,total=total,page=page,has_more=total>page*30,source=source,sourced=sourced,contacts=contacts,interested_ids=interested_ids,wa=whatsapp_number,statuses=STATUSES,countries=sorted({w.country for w in all_rows}),page_query=urlencode({k:v for k,v in f.items() if k!='page'}))
 
     @app.get('/workers/{worker_id}/request',response_class=HTMLResponse)
     def job_request(worker_id:int,request:Request,job_id:int=0,db:Session=Depends(get_db)):
@@ -264,6 +270,10 @@ def install(app,current_user,require_roles,page_ctx):
             else:
                 history=ContactHistory(tenant_id=user.tenant_id,worker_id=w.id,project_id=job.id,actor_id=user.id,body=render_offer(w,job,language(request)),nonce=nonce)
                 db.add(history);db.commit();db.refresh(history)
+        from collector.offer_responses import offer_link
+        if '/offer/' not in history.body:
+            history.body+='\n\n'+('Atsakykite „Domina / Nedomina“ čia:' if language(request)=='lt' else 'Reply Interested / Not interested here:')+'\n'+offer_link(request,history)
+            db.commit()
         return render(request,user,'platform_request.html',worker=w,jobs=[job],job=job,number=number,allowed=True,body=history.body,history=history,recent=recent,wa_url='https://wa.me/'+number[1:]+'?text='+quote(history.body,safe=''))
 
     @app.post('/contacts/{contact_id}/confirm')
@@ -276,9 +286,12 @@ def install(app,current_user,require_roles,page_ctx):
             row.status='CONTACTED';row.note='Recruiter confirmed sending the message in WhatsApp'
             meta=db.get(WorkerContact,row.worker_id)
             if not meta:meta=WorkerContact(worker_id=row.worker_id);db.add(meta)
-            meta.status='Contacted';meta.last_contacted=datetime.utcnow()
+            if meta.status not in ['Interested','Hired','In Process']:meta.status='Contacted'
+            meta.last_contacted=datetime.utcnow()
             candidate=db.query(ProjectCandidate).filter(ProjectCandidate.project_id==row.project_id,ProjectCandidate.worker_id==row.worker_id).first()
-            if candidate:candidate.stage='CONTACTED';candidate.outreach_channel='WhatsApp'
+            if candidate:
+                if candidate.stage=='MATCHED':candidate.stage='CONTACTED'
+                candidate.outreach_channel='WhatsApp'
             db.commit()
         return RedirectResponse(f'/workers/{row.worker_id}/contact-history',303)
 
@@ -342,6 +355,7 @@ def install(app,current_user,require_roles,page_ctx):
         from sqlalchemy import inspect
         from app.models import Crew
         from collector.coresignal import SourceRun
+        from collector.offer_responses import OfferResponse
         workers=db.query(Worker).filter(Worker.tenant_id==user.tenant_id).all()
         worker_ids=[w.id for w in workers]
         projects=db.query(Project).filter(Project.tenant_id==user.tenant_id).all()
@@ -349,7 +363,7 @@ def install(app,current_user,require_roles,page_ctx):
         # Explicit business-data allowlist. Authentication tables and bearer tokens
         # are never exported. Uploaded document files require separate storage.
         groups={'workers':workers,'jobs':projects}
-        for model in [Crew,Consent,CandidateIntake,SourceProfile,SourceRun,FreeLead,FreeCollectionRun,ContactHistory]:
+        for model in [Crew,Consent,CandidateIntake,SourceProfile,SourceRun,FreeLead,FreeCollectionRun,ContactHistory,OfferResponse]:
             query=db.query(model).filter(model.tenant_id==user.tenant_id)
             if hasattr(model,'worker_id'):query=query.filter(model.worker_id.in_(worker_ids))
             groups[model.__tablename__]=query.all()

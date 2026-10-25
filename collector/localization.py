@@ -6,7 +6,20 @@ from fastapi.responses import RedirectResponse,Response
 from app.db import SessionLocal,get_db
 
 # Translation keys also cover the legacy administration and document templates.
-PAIRS='''Data export|Duomenų eksportas
+PAIRS='''Candidate responses|Kandidatų atsakymai
+Job offer|Darbo pasiūlymas
+net per hour|į rankas už valandą
+Your answer was received|Jūsų atsakymas gautas
+INTERESTED|Domina
+NOT_INTERESTED|Nedomina
+Not interested|Nedomina
+Message to recruiter|Žinutė atrankos specialistui
+Your answer will be visible to the Euroteams recruiter. You can change it using this link.|Jūsų atsakymą matys Euroteams atrankos specialistas. Atsakymą galite pakeisti naudodami šią nuorodą.
+This is a private link. Please do not forward it.|Tai asmeninė nuoroda. Prašome jos nepersiųsti.
+This job is closed|Šis darbo pasiūlymas uždarytas
+No responses yet|Atsakymų dar nėra
+Replies submitted through private offer links. A reply does not verify identity or confirm that a WhatsApp message was sent.|Atsakymai pateikti per asmenines pasiūlymų nuorodas. Atsakymas nepatvirtina tapatybės ar WhatsApp žinutės išsiuntimo.
+Data export|Duomenų eksportas
 Download recruitment data|Atsisiųsti atrankos duomenis
 Download workers, jobs, permissions and contact history as JSON. Credentials and uploaded files are excluded. This is a data export; automatic restore is not available.|Atsisiųskite darbuotojus, darbo vietas, sutikimus ir kontaktavimo istoriją JSON formatu. Prisijungimo duomenys ir įkelti failai neįtraukiami. Tai duomenų eksportas; automatinio atkūrimo nėra.
 Choose availability|Pasirinkite, kada galite pradėti

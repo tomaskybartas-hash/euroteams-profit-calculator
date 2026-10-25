@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% block content %}
+{% extends 'base.html' %}{% block content %}<p><a class="btn primary" href="/responses">{{t("Candidate responses")}}</a></p>
 <div class="topbar"><div><div class="eyebrow">EUROTEAMS GROUP</div><h1>{{t('Dashboard')}}</h1><p>{{t('Workers')}} · {{t('Jobs')}} · {{t('Matches')}}</p></div><a class="btn primary" href="/projects/new">+ {{t('New job')}}</a></div>
 <div class="stats">{% for label,value in stats.items() %}<div class="stat"><span>{{t(label)}}</span><strong>{{value}}</strong></div>{% endfor %}</div>
 <section class="card"><h2>{{t('Workers')}}</h2><div class="segments">{% for key,label in segments.items() %}<a class="segment" href="/workers?segment={{key}}"><span>{{t(label)}}</span><strong>{{counts[key]}}</strong></a>{% endfor %}</div></section>
