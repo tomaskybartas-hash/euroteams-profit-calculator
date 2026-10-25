@@ -161,3 +161,6 @@ from collector.platform import csrf as _platform_csrf,asset_version as _platform
 def _platform_template_context(request):
     return {"asset_version":_platform_asset_version(),"platform_csrf":_platform_csrf(request) if request.cookies.get("wl_session") else ""}
 templates.context_processors.append(_platform_template_context)
+
+from collector.database_transfer import install as _install_database_transfer
+_install_database_transfer(app)
