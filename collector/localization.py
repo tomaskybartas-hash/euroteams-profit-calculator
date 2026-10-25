@@ -6,7 +6,10 @@ from fastapi.responses import RedirectResponse,Response
 from app.db import SessionLocal,get_db
 
 # Translation keys also cover the legacy administration and document templates.
-PAIRS='''Choose availability|Pasirinkite, kada galite pradėti
+PAIRS='''Data export|Duomenų eksportas
+Download recruitment data|Atsisiųsti atrankos duomenis
+Download workers, jobs, permissions and contact history as JSON. Credentials and uploaded files are excluded. This is a data export; automatic restore is not available.|Atsisiųskite darbuotojus, darbo vietas, sutikimus ir kontaktavimo istoriją JSON formatu. Prisijungimo duomenys ir įkelti failai neįtraukiami. Tai duomenų eksportas; automatinio atkūrimo nėra.
+Choose availability|Pasirinkite, kada galite pradėti
 Dashboard|Apžvalga
 Workers|Darbuotojai
 Jobs|Darbai

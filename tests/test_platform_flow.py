@@ -195,3 +195,35 @@ def test_email_permission_does_not_become_whatsapp_permission(setup):
     with Session(engine) as db:
         result=collect(db,dict(full_name='QA email applicant',country='LT',profession='welder',phone='+37060056780',email='email-test@example.test'),nonce='qa-email-only-consent',tenant_id=1,offer_permission=True,whatsapp_permission=False)
         assert not consent_allowed(db,result['worker_id'])
+
+
+def test_recruitment_export_admin_csrf_and_tenant_isolation(setup):
+    client,engine=setup
+    assert client.post('/settings/export').status_code==403
+    token=hidden(client.get('/settings').text,'csrf')
+    r=client.post('/settings/export',data={'csrf':token})
+    assert r.status_code==200 and r.headers['cache-control']=='no-store, private'
+    data=r.json()
+    assert data['counts']['workers']==1
+    assert data['data']['workers'][0]['full_name']=='QA Welder'
+    assert 'self_service_token' not in data['data']['workers'][0]
+    assert 'Other Tenant' not in r.text and 'Piotr Kowalski' not in r.text
+    assert 'password_hash' not in r.text
+    with Session(engine) as db:
+        db.get(AppUser,1).role='recruiter';db.commit()
+    assert client.post('/settings/export',data={'csrf':token}).status_code==403
+    assert 'Download recruitment data' not in client.get('/settings').text
+
+
+def test_csv_export_neutralises_formulas_and_preserves_json_original(setup):
+    import csv,io
+    client,engine=setup
+    with Session(engine) as db:
+        db.get(Worker,1).full_name='=HYPERLINK("https://invalid.test")';db.commit()
+    r=client.get('/workers/export.csv')
+    assert r.status_code==200 and r.headers['cache-control']=='no-store, private'
+    row=list(csv.DictReader(io.StringIO(r.text)))[0]
+    assert row['full_name'].startswith("'=")
+    assert row['phone'].startswith("'+")
+    token=hidden(client.get('/settings').text,'csrf')
+    assert client.post('/settings/export',data={'csrf':token}).json()['data']['workers'][0]['full_name'].startswith('=')

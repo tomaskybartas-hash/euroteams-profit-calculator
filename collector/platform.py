@@ -315,6 +315,53 @@ def install(app,current_user,require_roles,page_ctx):
         user=user_for(request,db)
         return render(request,user,'platform_sources.html',state=db.get(FreeSourceState,STATE_ID),runs=db.query(FreeCollectionRun).filter(FreeCollectionRun.tenant_id==user.tenant_id).order_by(FreeCollectionRun.id.desc()).limit(20).all(),lead_count=fresh_leads(db,user.tenant_id).count(),registrations=db.query(CandidateIntake).filter(CandidateIntake.tenant_id==user.tenant_id,CandidateIntake.status=='CREATED').count())
 
+    # Replace the legacy CSV export to prevent spreadsheet formula execution.
+    app.router.routes[:]=[r for r in app.router.routes if getattr(r,'path','')!='/workers/export.csv']
+    @app.get('/workers/export.csv')
+    def safe_workers_csv(request:Request,db:Session=Depends(get_db)):
+        user=user_for(request,db);require_roles(user,'admin','recruiter')
+        import csv,io
+        from fastapi.responses import Response
+        fields=['full_name','phone','email','country','profession','skills','certificates','languages','preferred_countries','preferred_rotation','expected_salary_net_hour','availability_status','available_from','ready_to_deploy']
+        output=io.StringIO(newline='');writer=csv.writer(output)
+        writer.writerow(['rotation' if key=='preferred_rotation' else key for key in fields])
+        def safe(value):
+            text=str(value) if value is not None else ''
+            return "'"+text if text.lstrip().startswith(('=','+','-','@')) or text.startswith(('\t','\r','\n')) else text
+        for worker in db.query(Worker).filter(Worker.tenant_id==user.tenant_id).order_by(Worker.id):
+            writer.writerow([safe(getattr(worker,key)) for key in fields])
+        return Response(output.getvalue(),media_type='text/csv; charset=utf-8',headers={'Content-Disposition':'attachment; filename="euroteams-workers.csv"','Cache-Control':'no-store, private','X-Content-Type-Options':'nosniff'})
+    route=app.router.routes.pop();app.router.routes.insert(0,route)
+
+    @app.post('/settings/export')
+    async def export_recruitment_data(request:Request,db:Session=Depends(get_db)):
+        user=user_for(request,db);require_roles(user,'admin')
+        verify_csrf(request,await request.form())
+        from fastapi.encoders import jsonable_encoder
+        from fastapi.responses import JSONResponse
+        from sqlalchemy import inspect
+        from app.models import Crew
+        from collector.coresignal import SourceRun
+        workers=db.query(Worker).filter(Worker.tenant_id==user.tenant_id).all()
+        worker_ids=[w.id for w in workers]
+        projects=db.query(Project).filter(Project.tenant_id==user.tenant_id).all()
+        project_ids=[j.id for j in projects]
+        # Explicit business-data allowlist. Authentication tables and bearer tokens
+        # are never exported. Uploaded document files require separate storage.
+        groups={'workers':workers,'jobs':projects}
+        for model in [Crew,Consent,CandidateIntake,SourceProfile,SourceRun,FreeLead,FreeCollectionRun,ContactHistory]:
+            query=db.query(model).filter(model.tenant_id==user.tenant_id)
+            if hasattr(model,'worker_id'):query=query.filter(model.worker_id.in_(worker_ids))
+            groups[model.__tablename__]=query.all()
+        groups['project_candidates']=db.query(ProjectCandidate).filter(ProjectCandidate.project_id.in_(project_ids),ProjectCandidate.worker_id.in_(worker_ids)).all()
+        groups['worker_contacts']=db.query(WorkerContact).filter(WorkerContact.worker_id.in_(worker_ids)).all()
+        def serialise(row):
+            excluded={'self_service_token','nonce','request_key','run_key','password_hash','file_path','stored_path'}
+            return {c.key:getattr(row,c.key) for c in inspect(type(row)).columns if c.key not in excluded and 'token' not in c.key and 'secret' not in c.key}
+        data={key:[serialise(row) for row in rows] for key,rows in groups.items()}
+        payload={'format':'euroteams-recruitment-export-v1','exported_at':datetime.now(timezone.utc).isoformat(),'tenant_id':user.tenant_id,'counts':{key:len(rows) for key,rows in data.items()},'limitations':['Business data only; account credentials, access links and uploaded files are excluded.','Automatic restore is not supported by this export.'],'data':data}
+        return JSONResponse(jsonable_encoder(payload),headers={'Content-Disposition':'attachment; filename="euroteams-recruitment-data.json"','Cache-Control':'no-store, private','X-Content-Type-Options':'nosniff'})
+
     @app.get('/settings',response_class=HTMLResponse)
     def settings(request:Request,db:Session=Depends(get_db)):
         user=user_for(request,db)
