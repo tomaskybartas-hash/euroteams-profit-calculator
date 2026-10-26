@@ -27,3 +27,18 @@ def missing_fields(worker):
 
 
 def profile_ready(worker):return not missing_fields(worker)
+
+
+DESTINATIONS={'NL':('Netherlands','Nyderlandai','Holandija'),'NO':('Norway','Norvegija'),'SE':('Sweden','Švedija'),'FI':('Finland','Suomija'),'DK':('Denmark','Danija'),'DE':('Germany','Vokietija'),'BE':('Belgium','Belgija'),'FR':('France','Prancūzija'),'AT':('Austria','Austrija'),'CH':('Switzerland','Šveicarija'),'CZ':('Czechia','Čekija'),'PT':('Portugal','Portugalija'),'EE':('Estonia','Estija'),'GB':('United Kingdom','UK','Jungtinė Karalystė')}
+
+
+def country_code(value):
+    from collector.worker_collector import canonical_country,fold
+    for code,names in DESTINATIONS.items():
+        if fold(value) in {fold(x) for x in (code,)+names}:return code
+    return canonical_country(value)
+
+
+def country_label(value):
+    code=country_code(value)
+    return DESTINATIONS[code][0] if code in DESTINATIONS else value

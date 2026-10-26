@@ -12,7 +12,7 @@ from sqlalchemy.orm import Mapped, mapped_column, Session, with_loader_criteria
 from app.db import Base, get_db
 from app.models import Worker, Project, ProjectCandidate, Consent, Message, Tenant, AppUser
 from collector.intake import CandidateIntake, signer
-from collector.profile_quality import profile_ready,missing_fields
+from collector.profile_quality import profile_ready,missing_fields,country_label
 from collector.coresignal import SourceProfile, SourceRun
 from collector.free_sources import FreeLead, FreeSourceState, FreeCollectionRun, fresh_leads, STATE_ID
 
@@ -122,7 +122,7 @@ def install(app,current_user,require_roles,page_ctx):
     locale_install(app,current_user)
     views=Jinja2Templates(directory=[str(Path(__file__).parent/'templates'),str(Path(__file__).parents[1]/'app'/'templates')])
     def ctx(request,user,**kw):
-        return page_ctx(request,user,asset_version=asset_version(),csrf_token=csrf(request),lang=language(request),t=lambda text:translate(text,language(request)),segments=SEGMENTS,profile_ready=profile_ready,missing_fields=missing_fields,completeness=__import__('collector.matching',fromlist=['completeness']).completeness,**kw)
+        return page_ctx(request,user,asset_version=asset_version(),csrf_token=csrf(request),lang=language(request),t=lambda text:translate(text,language(request)),segments=SEGMENTS,country_label=country_label,profile_ready=profile_ready,missing_fields=missing_fields,completeness=__import__('collector.matching',fromlist=['completeness']).completeness,**kw)
     def render(request,user,template,**kw):return views.TemplateResponse(request,template,ctx(request,user,**kw))
     def user_for(request,db):
         user=current_user(request,db)

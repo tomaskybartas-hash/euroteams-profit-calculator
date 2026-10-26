@@ -6,7 +6,8 @@ from fastapi.responses import RedirectResponse,Response
 from app.db import SessionLocal,get_db
 
 # Translation keys also cover the legacy administration and document templates.
-PAIRS='''Existing recruitment CV|Turimas kandidato CV
+PAIRS='''Norway|Norvegija
+Existing recruitment CV|Turimas kandidato CV
 Search contacts|Paieškos kontaktai
 Candidates for screening|Kandidatai atrankai
 Interested candidates|Susidomėję kandidatai

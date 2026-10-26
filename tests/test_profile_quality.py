@@ -90,3 +90,16 @@ def test_first_qualification_counts_today_even_for_older_contacts_and_never_coun
         assert db.query(AuditLog).filter_by(action='PROFILE_QUALIFIED').count()==1
         from app.models import ProjectCandidate
         assert db.query(ProjectCandidate).filter_by(worker_id=1,project_id=1).count()==1
+
+
+def test_destination_names_match_codes_and_norway_is_not_boolean_no(setup):
+    from collector.matching import score
+    from collector.profile_quality import country_label
+    _,engine=setup
+    assert country_label('NO')=='Norway'
+    with Session(engine) as db:
+        w=db.get(Worker,1);w.preferred_countries='Netherlands; Norvegija'
+        from app.models import Project
+        result=score(w,db.get(Project,1))
+        assert 'project country outside stated preferences' not in result['hard_failures']
+        assert 'Country preference matches' in result['reasons']

@@ -1,7 +1,7 @@
 """Evidence-based ranking. Missing fields do not establish a positive match."""
 import re
 from app.models import Worker
-from collector.profile_quality import profile_ready,missing_fields,has_name
+from collector.profile_quality import profile_ready,missing_fields,has_name,country_code
 from .worker_collector import CandidateRecord,ProjectNeed,canonical_country,score_candidate
 
 
@@ -18,8 +18,8 @@ def score(worker,project):
     reasons=[x for x in result.reasons if x!='experience' or worker.years_experience>0]
     blockers=list(result.blockers)
     if not profile_ready(worker):blockers.append('Profile incomplete')
-    preferred={canonical_country(x) for x in split(worker.preferred_countries)}
-    destination=canonical_country(project.country)
+    preferred={country_code(x) for x in split(worker.preferred_countries)}
+    destination=country_code(project.country)
     if preferred and destination not in preferred:
         blockers.append('project country outside stated preferences')
     elif preferred and destination in preferred:
