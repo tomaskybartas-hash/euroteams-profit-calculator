@@ -31,7 +31,7 @@ jobs:
           cp -r collector workforce_live_prod_clean/collector
           cp collector/collector.html workforce_live_prod_clean/app/templates/collector.html
           cat collector/runtime_routes.pyfrag >> workforce_live_prod_clean/app/main.py
-          python -m pip install -r workforce_live_prod_clean/requirements.txt
+          python -m pip install -r workforce_live_prod_clean/requirements.txt beautifulsoup4
       - name: Verify acquisition, matching and candidate response flows
         working-directory: workforce_live_prod_clean
         env:
