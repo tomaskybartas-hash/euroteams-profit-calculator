@@ -26,7 +26,7 @@ jobs:
           print(result)
           if result.get('status') != 'COMPLETED':
               raise SystemExit('Public RSS refresh failed; inspect the source status')
-          for key in ('public_jobseekers', 'romanian_jobseekers'):
+          for key in ('public_jobseekers', 'romanian_jobseekers', 'polish_jobseekers'):
               source = result.get(key)
               if not source:
                   print(f'::warning::{key}: no operational result returned')
