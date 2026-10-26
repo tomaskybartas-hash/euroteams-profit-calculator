@@ -230,7 +230,7 @@ def install(app,current_user,require_roles,page_ctx):
         all_rows=db.query(Worker).filter(Worker.tenant_id==user.tenant_id).all();counts={k:0 for k in SEGMENTS}
         view=f.get('stage','interested' if f.get('status')=='Interested' else 'candidates')
         if view not in ['candidates','prospects','interested','all']:raise HTTPException(400,'Invalid stage')
-        def source(w):return 'Public advertisement' if w.id in source_rows and source_rows[w.id].source!='coresignal' else 'Professional profile' if w.id in source_rows else 'Candidate registration' if w.id in registered else 'Manual / import'
+        def source(w):return 'Existing recruitment CV' if w.id in source_rows and source_rows[w.id].source=='euroteams-cv' else 'Public advertisement' if w.id in source_rows and source_rows[w.id].source!='coresignal' else 'Professional profile' if w.id in source_rows else 'Candidate registration' if w.id in registered else 'Manual / import'
         if f.get('segment'):rows=[w for w in rows if segment(w)==f['segment']]
         if f.get('source'):rows=[w for w in rows if source(w)==f['source']]
         contacts={c.worker_id:c for c in db.query(WorkerContact).join(Worker,Worker.id==WorkerContact.worker_id).filter(Worker.tenant_id==user.tenant_id).all()}
