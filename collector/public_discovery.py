@@ -1,7 +1,7 @@
 """Bounded public jobseeker discovery. No accounts, contact reveals or outreach.
 
-Only Liepaja classifieds are enabled: their attribution policy is explicit. Other
-publicly visible sources stay in the research catalogue until separately checked.
+Liepaja and Romanian jobseeker readers use bounded requests and retain source
+attribution. Other sources remain in the research catalogue until checked.
 """
 from datetime import datetime, timedelta
 from html.parser import HTMLParser
@@ -117,7 +117,7 @@ def discover(client):
     return rows,failed
 
 
-def refresh(db,tenant_id=1,client=None):
+def refresh(db,tenant_id=1,client=None,*,source_key=SOURCE,country="LV",discoverer=None,policy=POLICY):
     from contextlib import nullcontext
     from app.models import Worker,AuditLog
     from collector.coresignal import SourceRun,SourceProfile
@@ -125,34 +125,36 @@ def refresh(db,tenant_id=1,client=None):
     import secrets
     now=datetime.utcnow()
     if db.get_bind().dialect.name=='postgresql':db.execute(text('SELECT pg_advisory_xact_lock(64132979)'))
-    previous=db.query(SourceRun).filter(SourceRun.tenant_id==tenant_id,SourceRun.run_key.like(SOURCE+':%')).order_by(SourceRun.id.desc()).first()
+    previous=db.query(SourceRun).filter(SourceRun.tenant_id==tenant_id,SourceRun.run_key.like(source_key+':%')).order_by(SourceRun.id.desc()).first()
     if previous and now-previous.created_at<timedelta(hours=6):
         result={'state':previous.state,'added':previous.added,'found':previous.found,'duplicates':previous.duplicates,'error':previous.error_code,'cached':True}
         db.commit();return result
-    run=SourceRun(tenant_id=tenant_id,run_key=SOURCE+':'+str(tenant_id)+':'+now.isoformat())
+    run=SourceRun(tenant_id=tenant_id,run_key=source_key+':'+str(tenant_id)+':'+now.isoformat())
     db.add(run);db.commit();run_id=run.id
     try:
         with (httpx.Client(timeout=6,follow_redirects=False,headers={'User-Agent':AGENT+'/1.0 (public jobseeker discovery; source attribution retained)'}) if client is None else nullcontext(client)) as http:
-            rows,failed=discover(http)
+            rows,failed=(discoverer or discover)(http)
+        if db.get_bind().dialect.name=='postgresql':db.execute(text('SELECT pg_advisory_xact_lock(64132979)'))
         run.found=len(rows);run.errors=failed
         for row in rows:
-            old=db.query(SourceProfile).filter_by(tenant_id=tenant_id,source=SOURCE,source_id=row['source_id']).first()
+            old=db.query(SourceProfile).filter_by(tenant_id=tenant_id,source_url=row['source_url']).first()
             if old:run.duplicates+=1;continue
             normalized=Worker.phone
             for char in (' ','-','(',')','.'):normalized=func.replace(normalized,char,'')
             existing=db.query(Worker).filter(Worker.tenant_id==tenant_id,normalized==row['phone']).first()
             if existing:run.duplicates+=1;continue  # Never overwrite first-party profiles or revive consent.
-            worker=Worker(tenant_id=tenant_id,full_name=row['full_name'],country='LV',profession=row['profession'],
+            worker=Worker(tenant_id=tenant_id,full_name=row['full_name'],country=country,profession=row['profession'],
                 phone=row['phone'],email='',availability_status='UNKNOWN',eu_citizen=False,
                 ready_to_deploy=False,identity_verified=False,documents_verified=False,skills_verified=False,
                 years_experience=0,preferred_channel='Phone',self_service_token=secrets.token_urlsafe(32),
-                work_permit_notes='Public jobseeker advertisement; name, current availability and right to work unverified. No Email/WhatsApp opt-in. Source: '+row['source_url'])
+                preferred_countries=row.get('preferred_countries',''),
+                work_permit_notes=row.get('notes','')+' Public jobseeker advertisement; name, current availability and right to work unverified. No Email/WhatsApp opt-in. Source: '+row['source_url'])
             db.add(worker);db.flush()
-            db.add(SourceProfile(tenant_id=tenant_id,worker_id=worker.id,source=SOURCE,source_id=row['source_id'],
+            db.add(SourceProfile(tenant_id=tenant_id,worker_id=worker.id,source=source_key,source_id=row['source_id'],
                 source_url=row['source_url'],reported_title='Public jobseeker advertisement · '+row['profession'],
                 provider_updated_at=row['published_at'].isoformat(),verification_status='UNCONFIRMED',
-                permission_basis='Public work-seeking advertisement; minimal recruitment review facts; source attribution: '+POLICY+'; no communication opt-in inferred'))
-            db.add(AuditLog(tenant_id=tenant_id,actor='public-jobseeker-discovery',action='PUBLIC_JOBSEEKER_COLLECTED',entity_type='worker',entity_id=str(worker.id),details='source='+SOURCE+'; no messaging consent inferred'))
+                permission_basis='Public work-seeking advertisement; minimal recruitment review facts; source attribution: '+policy+'; no communication opt-in inferred'))
+            db.add(AuditLog(tenant_id=tenant_id,actor='public-jobseeker-discovery',action='PUBLIC_JOBSEEKER_COLLECTED',entity_type='worker',entity_id=str(worker.id),details='source='+source_key+'; no messaging consent inferred'))
             run.added+=1
         run.state='DEGRADED' if failed else 'COMPLETED'
         db.commit()

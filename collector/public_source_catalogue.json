@@ -36,8 +36,9 @@
       "url": "https://www.anunturi66.ro/afaceri-industrie-joburi/locuri-de-munca/cereri/",
       "example": "https://www.anunturi66.ro/sudor-caut-de-munca-in-tara-190209",
       "contact_access": "PUBLIC_PHONE_IN_AD",
-      "automation": "NOT_CONNECTED",
-      "note": "Welder jobseeker updated 2026-10-05, Romania-only preference. Numerous similar advertisements may share one contact: dedupe required. Terms review incomplete."
+      "automation": "IMPLEMENTED_PENDING_LIVE_VERIFICATION",
+      "note": "Bounded public jobseeker reader: robots checked, visible description contacts only, 30-day update cutoff, phone and URL deduplication. Romania-only preferences retained. No identity, current availability or messaging opt-in inferred.",
+      "terms": "https://www.anunturi66.ro/termeni-si-conditii"
     },
     {
       "country": "BG",

@@ -337,7 +337,7 @@ def install(app,current_user,require_roles,page_ctx):
     @app.get('/sources',response_class=HTMLResponse)
     def sources(request:Request,db:Session=Depends(get_db)):
         user=user_for(request,db)
-        return render(request,user,'platform_sources.html',state=db.get(FreeSourceState,STATE_ID),runs=db.query(FreeCollectionRun).filter(FreeCollectionRun.tenant_id==user.tenant_id).order_by(FreeCollectionRun.id.desc()).limit(20).all(),lead_count=fresh_leads(db,user.tenant_id).count(),research=__import__('json').loads((Path(__file__).parent/'public_source_catalogue.json').read_text())['sources'],public_run=db.query(SourceRun).filter(SourceRun.tenant_id==user.tenant_id,SourceRun.run_key.like('liepajniekiem-public:%')).order_by(SourceRun.id.desc()).first(),registrations=db.query(CandidateIntake).filter(CandidateIntake.tenant_id==user.tenant_id,CandidateIntake.status=='CREATED').count())
+        return render(request,user,'platform_sources.html',state=db.get(FreeSourceState,STATE_ID),runs=db.query(FreeCollectionRun).filter(FreeCollectionRun.tenant_id==user.tenant_id).order_by(FreeCollectionRun.id.desc()).limit(20).all(),lead_count=fresh_leads(db,user.tenant_id).count(),research=__import__('json').loads((Path(__file__).parent/'public_source_catalogue.json').read_text())['sources'],public_run=db.query(SourceRun).filter(SourceRun.tenant_id==user.tenant_id,SourceRun.run_key.like('liepajniekiem-public:%')).order_by(SourceRun.id.desc()).first(),romanian_run=db.query(SourceRun).filter(SourceRun.tenant_id==user.tenant_id,SourceRun.run_key.like('anunturi66-public:%')).order_by(SourceRun.id.desc()).first(),registrations=db.query(CandidateIntake).filter(CandidateIntake.tenant_id==user.tenant_id,CandidateIntake.status=='CREATED').count())
 
     # Replace the legacy CSV export to prevent spreadsheet formula execution.
     app.router.routes[:]=[r for r in app.router.routes if getattr(r,'path','')!='/workers/export.csv']
@@ -449,7 +449,7 @@ def install(app,current_user,require_roles,page_ctx):
         from app.models import WorkerDocument,AvailabilityEvent
         user=user_for(request,db);worker=worker_for(db,worker_id,user)
         evidence=db.query(SourceProfile).filter(SourceProfile.worker_id==worker.id,SourceProfile.tenant_id==user.tenant_id).first()
-        return render(request,user,'worker_detail.html',worker=worker,source_url=evidence.source_url if evidence else '',confidence='—' if not worker.last_availability_confirmed else 'Confirmed date: '+str(worker.last_availability_confirmed),documents=db.query(WorkerDocument).filter(WorkerDocument.worker_id==worker.id).all(),messages=db.query(Message).filter(Message.worker_id==worker.id).order_by(Message.created_at.desc()).limit(20).all(),events=db.query(AvailabilityEvent).filter(AvailabilityEvent.worker_id==worker.id).order_by(AvailabilityEvent.created_at.desc()).limit(20).all(),consents=db.query(Consent).filter(Consent.worker_id==worker.id).order_by(Consent.created_at.desc()).all())
+        return render(request,user,'worker_detail.html',worker=worker,phone_link=international_number(worker.phone),source_url=evidence.source_url if evidence else '',confidence='—' if not worker.last_availability_confirmed else 'Confirmed date: '+str(worker.last_availability_confirmed),documents=db.query(WorkerDocument).filter(WorkerDocument.worker_id==worker.id).all(),messages=db.query(Message).filter(Message.worker_id==worker.id).order_by(Message.created_at.desc()).limit(20).all(),events=db.query(AvailabilityEvent).filter(AvailabilityEvent.worker_id==worker.id).order_by(AvailabilityEvent.created_at.desc()).limit(20).all(),consents=db.query(Consent).filter(Consent.worker_id==worker.id).order_by(Consent.created_at.desc()).all())
 
     @app.post('/collector/free-source/run')
     async def manual_collection(request:Request,db:Session=Depends(get_db)):
@@ -457,4 +457,8 @@ def install(app,current_user,require_roles,page_ctx):
         form=await request.form();verify_csrf(request,form)
         from collector.free_sources import refresh
         refresh(db,user.tenant_id,force=True)
+        from collector.public_discovery import refresh as public_refresh
+        from collector.romanian_discovery import refresh as romanian_refresh
+        public_refresh(db,user.tenant_id)
+        romanian_refresh(db,user.tenant_id)
         return RedirectResponse('/sources',303)

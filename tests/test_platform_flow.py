@@ -227,3 +227,24 @@ def test_csv_export_neutralises_formulas_and_preserves_json_original(setup):
     assert row['phone'].startswith("'+")
     token=hidden(client.get('/settings').text,'csrf')
     assert client.post('/settings/export',data={'csrf':token}).json()['data']['workers'][0]['full_name'].startswith('=')
+
+
+def test_stated_country_limits_block_foreign_jobs_and_notes_are_visible(setup):
+    client,engine=setup
+    from collector.matching import score
+    with Session(engine) as db:
+        worker=db.get(Worker,1);job=db.get(Project,1)
+        worker.preferred_countries='PL; LT'
+        worker.work_permit_notes='Local jobs only <script>alert(1)</script>'
+        db.commit()
+        result=score(worker,job)
+        assert 'project country outside stated preferences' in result['hard_failures']
+        assert not result['eligible']
+        job.country='LT'
+        result=score(worker,job)
+        assert 'project country outside stated preferences' not in result['hard_failures']
+        assert 'Country preference matches' in result['reasons']
+    page=client.get('/workers/1').text
+    assert 'tel:+37060012345' in page
+    assert 'Local jobs only &lt;script&gt;' in page
+    assert '<script>alert(1)</script>' not in page

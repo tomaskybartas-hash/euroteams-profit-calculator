@@ -188,6 +188,7 @@ def refresh(db, tenant_id=1, client=None, force=False):
             except (httpx.HTTPError,ValueError,ET.ParseError) as exc:
                 feed_errors.append(category+':'+(str(exc.response.status_code) if isinstance(exc,httpx.HTTPStatusError) else type(exc).__name__))
         state.found=len(entries);state.added=0;state.duplicates=0
+        if db.get_bind().dialect.name=='postgresql':db.execute(text('SELECT pg_advisory_xact_lock(64132979)'))
         contact_ads=profiles_added=0
         for entry in entries:
             contacts=entry.pop('public_contacts',{})
@@ -232,6 +233,8 @@ def install(app,current_user,require_roles,page_ctx):
         result=refresh(db,tid)
         from collector.public_discovery import refresh as refresh_public_jobseekers
         result["public_jobseekers"]=refresh_public_jobseekers(db,tid)
+        from collector.romanian_discovery import refresh as refresh_romanian_jobseekers
+        result["romanian_jobseekers"]=refresh_romanian_jobseekers(db,tid)
         from collector.acquisition_metrics import save_previous_day
         save_previous_day(db,tid)
         return result

@@ -16,6 +16,12 @@ def score(worker,project):
     result=score_candidate(record,need)
     reasons=[x for x in result.reasons if x!='experience' or worker.years_experience>0]
     blockers=list(result.blockers)
+    preferred={canonical_country(x) for x in split(worker.preferred_countries)}
+    destination=canonical_country(project.country)
+    if preferred and destination not in preferred:
+        blockers.append('project country outside stated preferences')
+    elif preferred and destination in preferred:
+        reasons.append('Country preference matches')
     if not worker.phone and not worker.email:blockers.append('contact not provided')
     if worker.availability_status in ['AVAILABLE NOW','AVAILABLE FROM DATE','OPEN TO OFFERS'] and not worker.last_availability_confirmed:blockers.append('availability not verified')
     return {'eligible':not blockers,'match_score':result.score,'fit_score':result.score,'interest_probability':0,'arrival_probability':0,'data_confidence':completeness(worker),'reasons':reasons+blockers,'hard_failures':blockers}

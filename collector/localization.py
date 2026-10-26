@@ -6,7 +6,10 @@ from fastapi.responses import RedirectResponse,Response
 from app.db import SessionLocal,get_db
 
 # Translation keys also cover the legacy administration and document templates.
-PAIRS='''New unique worker profiles|Nauji unikalūs darbuotojų profiliai
+PAIRS='''Lithuania, Poland, Bulgaria, Spain, Italy|Lietuva, Lenkija, Bulgarija, Ispanija, Italija
+Source notes and restrictions|Šaltinio pastabos ir apribojimai
+project country outside stated preferences|Projekto šalis neatitinka nurodytų pageidavimų
+New unique worker profiles|Nauji unikalūs darbuotojų profiliai
 Daily collection reports|Dienos rinkimo ataskaitos
 Saved daily totals for new worker profiles. Ads are excluded. Reports start when this feature is enabled; unsupported metrics are not invented.|Išsaugotos naujų darbuotojų profilių dienos suvestinės. Skelbimai neįtraukiami. Ataskaitos kaupiamos nuo funkcijos įjungimo; nematuojami rodikliai neišgalvojami.
 No daily reports yet|Dienos ataskaitų dar nėra
