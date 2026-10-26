@@ -150,7 +150,7 @@ def registration_form(client, **changes):
     page = client.get('/join')
     assert page.status_code == 200
     token = re.search(r'name="token" value="([^"]+)"', page.text).group(1)
-    values = {'token': token, 'full_name': 'QA Test Applicant', 'country': 'LT', 'profession': 'welder', 'email': 'qa-applicant@example.com', 'phone': '+37060000001', 'privacy': 'yes', 'eu_citizen': 'yes', 'availability': 'AVAILABLE NOW', 'years_experience': '6', 'certificates': 'VCA', 'languages': 'English', 'salary': '21'}
+    values = {'token': token, 'full_name': 'QA Test Applicant', 'country': 'LT', 'profession': 'welder', 'email': 'qa-applicant@example.com', 'phone': '+37060000001', 'privacy': 'yes', 'eu_citizen': 'yes', 'availability': 'AVAILABLE NOW', 'years_experience': '6', 'certificates': 'VCA', 'languages': 'English', 'salary': '21', 'preferred_countries':'NL'}
     values.update(changes)
     return values
 
@@ -333,3 +333,54 @@ def test_registration_error_preserves_values_safely_and_allows_retry(intake_clie
     data['full_name'] = 'QA Retry Applicant'
     data['salary'] = '21'
     assert client.post('/join', data=data, follow_redirects=False).status_code == 303
+
+
+def test_registration_accepts_european_residence_and_respects_preferences(intake_client):
+    from sqlalchemy.orm import Session
+    from app.models import Worker,ProjectCandidate
+    from collector.profile_quality import profile_ready
+    client,engine=intake_client
+    r=client.post('/join',data=registration_form(client,country='Norway',preferred_countries='Germany'),follow_redirects=False)
+    assert r.status_code==303
+    with Session(engine) as db:
+        worker=db.query(Worker).one()
+        assert worker.country=='NO' and profile_ready(worker)
+        assert db.query(ProjectCandidate).one().eligibility=='REVIEW'
+    page=client.get('/join').text
+    assert all('value="'+code+'"' in page for code in ['NO','DE','UA'])
+
+
+def test_registration_rejects_profiles_that_cannot_enter_screening(intake_client):
+    from sqlalchemy.orm import Session
+    from app.models import Worker
+    client,engine=intake_client
+    for changes in [dict(full_name='Anonymous'),dict(preferred_countries=''),dict(years_experience='0',skills=''),dict(phone='60000001')]:
+        assert client.post('/join',data=registration_form(client,**changes)).status_code==422
+    with Session(engine) as db:assert db.query(Worker).count()==0
+    r=client.post('/join',data=registration_form(client,years_experience='0',skills='Welding practice at training centre',phone='0037060000001'),follow_redirects=False)
+    assert r.status_code==303
+    with Session(engine) as db:assert db.query(Worker).one().phone=='+37060000001'
+
+
+def test_receipt_private_link_is_only_available_to_new_applicant(intake_client):
+    from bs4 import BeautifulSoup
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from sqlalchemy.orm import Session
+    from app.models import Worker,ProjectCandidate
+    client,engine=intake_client
+    assert client.post('/join',data=registration_form(client),follow_redirects=False).status_code==303
+    receipt=client.get('/join/received')
+    assert receipt.headers['cache-control']=='no-store, private'
+    assert receipt.headers['referrer-policy']=='no-referrer'
+    link=BeautifulSoup(receipt.text,'html.parser').select_one('a[href$="/profile"]')['href']
+    assert client.get(link).status_code==200
+    outsider=TestClient(app,base_url='https://testserver')
+    assert link not in outsider.get('/join/received').text
+    outsider.cookies.set('intake_receipt','forged')
+    assert link not in outsider.get('/join/received').text
+    client.post('/join',data=registration_form(client,full_name='Another Person'))
+    assert link not in client.get('/join/received').text
+    with Session(engine) as db:
+        assert db.query(Worker).count()==1
+        assert db.query(ProjectCandidate).count()==1

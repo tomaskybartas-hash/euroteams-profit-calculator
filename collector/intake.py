@@ -14,8 +14,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, mapped_column, Session
 from app.db import Base, get_db
 from app.models import Tenant, Worker, Project, ProjectCandidate, Consent, AuditLog
-from .worker_collector import CandidateRecord, canonical_country, canonical_role, normalize_phone, SUPPORTED_COUNTRIES
-from .workforce_bridge import create_project_candidates
+from .worker_collector import CandidateRecord, canonical_country, canonical_role, normalize_phone, SUPPORTED_COUNTRIES, COUNTRY_NAMES
+from .profile_quality import has_name, profile_ready
 
 PRIVACY_VERSION = 'candidate-intake-v1'
 ROLES = {'welder', 'pipefitter', 'metal fitter', 'mechanic', 'carpenter', 'mason', 'electrician', 'scaffolder', 'general labour', 'other'}
@@ -53,13 +53,13 @@ def validate_input(form):
     phone = normalize_phone(value('phone', 60))
     country = canonical_country(value('country', 80))
     role = canonical_role(value('profession', 120))
-    if len(name) < 3 or country not in SUPPORTED_COUNTRIES or role not in ROLES:
+    if not has_name(name) or country not in SUPPORTED_COUNTRIES or role not in ROLES:
         raise ValueError('Enter your full name, country and profession')
     if not email and not phone:
         raise ValueError('Enter an email address or phone number')
     if email and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email):
         raise ValueError('Enter a valid email address')
-    if phone and not re.fullmatch(r'\+?[0-9]{8,15}', phone):
+    if phone and not re.fullmatch(r'\+[1-9][0-9]{7,14}', phone):
         raise ValueError('Enter a valid phone number including country code')
     if value('privacy') != 'yes':
         raise ValueError('Please acknowledge the privacy notice')
@@ -73,12 +73,22 @@ def validate_input(form):
     available_from = date.fromisoformat(value('available_from')) if value('available_from') else None
     if availability == 'AVAILABLE FROM DATE' and not available_from:
         raise ValueError('Select the date you can start')
+    skills=value('skills',2000)
+    preferences=value('preferred_countries',500)
+    if not years and not skills:
+        raise ValueError('Describe your skills or enter your experience')
+    if not preferences:
+        raise ValueError('Enter the countries where you would like to work')
+    if role=='other':
+        role=value('profession_details',120)
+        if len(role)<3 or role.casefold() in {'other','unknown','unconfirmed'}:
+            raise ValueError('Describe your profession')
     return dict(full_name=name, email=email, phone=phone, country=country,
                 profession=role, years_experience=years, expected_salary_net_hour=salary,
                 availability_status=availability, available_from=available_from,
                 eu_citizen=value('eu_citizen') == 'yes',
                 certificates=value('certificates', 2000), languages=value('languages', 500),
-                preferred_countries=value('preferred_countries', 500),
+                preferred_countries=preferences, skills=skills,
                 preferred_rotation=value('rotation', 80), city=value('city', 120))
 
 
@@ -99,6 +109,7 @@ def collect(db, values, nonce, tenant_id, offer_permission=False, request_key=""
     if db.get_bind().dialect.name == 'postgresql':
         from sqlalchemy import text
         import hashlib
+        db.execute(text('SELECT pg_advisory_xact_lock(64132979)'))
         identifiers = ([f'email:{email}'] if email else []) + ([f'phone:{phone}'] if phone else [])
         for identifier in sorted(identifiers):
             key = int.from_bytes(hashlib.sha256(f'{tenant_id}:{identifier}'.encode()).digest()[:8], 'big', signed=True)
@@ -116,7 +127,7 @@ def collect(db, values, nonce, tenant_id, offer_permission=False, request_key=""
                     identity_verified=False, documents_verified=False,
                     skills_verified=False, ready_to_deploy=False,
                     work_permit_notes='Self-declared application; recruiter verification required',
-                    preferred_channel='WhatsApp' if whatsapp_permission else 'Email' if email else 'WhatsApp')
+                    preferred_channel='WhatsApp' if whatsapp_permission else 'Email' if offer_permission and email else 'Phone')
     db.add(worker)
     db.flush()
     db.add(CandidateIntake(tenant_id=tenant_id, worker_id=worker.id, nonce=nonce, status='CREATED', request_key=request_key))
@@ -127,6 +138,10 @@ def collect(db, values, nonce, tenant_id, offer_permission=False, request_key=""
         db.add(Consent(tenant_id=tenant_id,worker_id=worker.id,channel='WhatsApp',purpose='job_offers',granted=True,source='worker_self_registration',text_version='whatsapp-optin-v1'))
     db.add(AuditLog(tenant_id=tenant_id, actor='candidate-portal', action='CANDIDATE_SELF_REGISTERED',
                     entity_type='worker', entity_id=str(worker.id), details='source=euroteams-portal; verification=self-declared'))
+    if profile_ready(worker):
+        db.add(AuditLog(tenant_id=tenant_id,actor='candidate-portal',action='PROFILE_QUALIFIED',entity_type='worker',entity_id=str(worker.id),details='Complete self-declared registration; identity and documents require separate verification'))
+        from collector.matching import sync_worker_matches
+        sync_worker_matches(db,worker)
     db.commit()
     return {'created': True, 'worker_id': worker.id}
 
@@ -150,7 +165,7 @@ def install(app):
 
     def render(request, error=None, status=200, values=None):
         token = signer().dumps({'nonce': secrets.token_urlsafe(24)})
-        response = views.TemplateResponse(request, 'join.html', {'request': request, 'token': token, 'error': error, 'values': values or {}}, status_code=status)
+        response = views.TemplateResponse(request, 'join.html', {'request': request, 'token': token, 'error': error, 'values': values or {}, 'countries': COUNTRY_NAMES}, status_code=status)
         response.set_cookie('intake_form', token, httponly=True, secure=request.url.scheme == 'https', samesite='lax', max_age=3600, path='/join')
         response.headers['Cache-Control'] = 'no-store'
         return response
@@ -165,8 +180,20 @@ def install(app):
         return views.TemplateResponse(request, 'intake_privacy.html', {'request': request})
 
     @app.get('/join/received', response_class=HTMLResponse)
-    def received(request: Request):
-        return views.TemplateResponse(request, 'intake_received.html', {'request': request})
+    def received(request: Request, db: Session = Depends(get_db)):
+        profile_url=None
+        try:
+            payload=signer().loads(request.cookies.get('intake_receipt',''),max_age=3600)
+            worker=db.query(Worker).filter_by(id=payload['wid'],tenant_id=tenant(db)).first()
+            import hashlib,hmac
+            if worker and hmac.compare_digest(payload['key'],hashlib.sha256(worker.self_service_token.encode()).hexdigest()):
+                profile_url='/worker/'+worker.self_service_token+'/profile'
+        except (BadData,KeyError,TypeError):pass
+        response=views.TemplateResponse(request,'intake_received.html',{'request':request,'profile_url':profile_url})
+        response.headers['Cache-Control']='no-store, private'
+        response.headers['Referrer-Policy']='no-referrer'
+        response.headers['X-Robots-Tag']='noindex, nofollow'
+        return response
 
     @app.post('/join', response_class=HTMLResponse)
     async def join_submit(request: Request, db: Session = Depends(get_db)):
@@ -214,25 +241,12 @@ def install(app):
         except IntegrityError:
             db.rollback()
             return RedirectResponse('/join/received', 303)
-        if result['created']:
-            worker = db.get(Worker, result['worker_id'])
-            record = CandidateRecord(full_name=worker.full_name, country=worker.country,
-                      role=worker.profession, source='euroteams-portal', email=worker.email,
-                      phone=worker.phone, years_experience=worker.years_experience,
-                      certificates=[x.strip() for x in worker.certificates.split(',') if x.strip()],
-                      languages=[x.strip() for x in worker.languages.split(',') if x.strip()],
-                      eu_citizen=worker.eu_citizen, availability_status=worker.availability_status,
-                      available_from=worker.available_from, desired_net_hourly=worker.expected_salary_net_hour)
-            projects = db.query(Project).filter(Project.tenant_id == tid,
-                       Project.status.in_(['DRAFT', 'RECRUITING', 'ACTIVE'])).limit(100).all()
-            try:
-                for project in projects:
-                    create_project_candidates(db, ProjectCandidate, project, {record.fingerprint: worker}, [record], tid)
-            except Exception:
-                db.rollback()
-                db.add(AuditLog(tenant_id=tid, actor='candidate-portal', action='PORTAL_MATCH_FAILED',
-                               entity_type='worker', entity_id=str(worker.id), details='Retry matching from Worker Collector'))
-                db.commit()
         response = RedirectResponse('/join/received', 303)
+        if result['created']:
+            worker=db.get(Worker,result['worker_id'])
+            receipt=signer().dumps({'wid':worker.id,'key':hashlib.sha256(worker.self_service_token.encode()).hexdigest()})
+            response.set_cookie('intake_receipt',receipt,httponly=True,secure=request.url.scheme=='https',samesite='lax',max_age=3600,path='/join/received')
+        else:
+            response.delete_cookie('intake_receipt',path='/join/received')
         response.delete_cookie('intake_form', path='/join')
         return response

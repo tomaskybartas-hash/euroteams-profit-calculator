@@ -5,13 +5,24 @@ from datetime import date, datetime
 import hashlib, re, unicodedata
 from typing import Iterable, Optional
 
-SUPPORTED_COUNTRIES={"LT","LV","PL","RO","BG","ES","IT"}
+# Supported residence countries, independently of citizenship or right to work.
+COUNTRY_NAMES={"LT":"Lithuania","LV":"Latvia","PL":"Poland","RO":"Romania","BG":"Bulgaria","ES":"Spain","IT":"Italy","AT":"Austria","BE":"Belgium","HR":"Croatia","CY":"Cyprus","CZ":"Czechia","DK":"Denmark","EE":"Estonia","FI":"Finland","FR":"France","DE":"Germany","GR":"Greece","HU":"Hungary","IE":"Ireland","LU":"Luxembourg","MT":"Malta","NL":"Netherlands","PT":"Portugal","SK":"Slovakia","SI":"Slovenia","SE":"Sweden","NO":"Norway","IS":"Iceland","LI":"Liechtenstein","CH":"Switzerland","GB":"United Kingdom","AL":"Albania","BA":"Bosnia and Herzegovina","ME":"Montenegro","MK":"North Macedonia","RS":"Serbia","XK":"Kosovo","UA":"Ukraine","MD":"Moldova","TR":"Turkey","GE":"Georgia","AM":"Armenia","AZ":"Azerbaijan","BY":"Belarus","RU":"Russia","AD":"Andorra","MC":"Monaco","SM":"San Marino","VA":"Vatican City"}
+SUPPORTED_COUNTRIES=set(COUNTRY_NAMES)
 COUNTRY_ALIASES={
  "LT":{"lt","lithuania","lietuva"},"LV":{"lv","latvia","latvija"},
  "PL":{"pl","poland","polska","lenkija"},"RO":{"ro","romania","romania","rumunija"},
  "BG":{"bg","bulgaria","bulgarija"},"ES":{"es","spain","espana","ispanija"},
  "IT":{"it","italy","italia","italija"},
 }
+for _code,_name in COUNTRY_NAMES.items():
+ COUNTRY_ALIASES.setdefault(_code,{_code.lower(),_name.lower()})
+COUNTRY_ALIASES['GB'].update({'uk','great britain','jungtine karalyste'})
+COUNTRY_ALIASES['NO'].add('norvegija')
+COUNTRY_ALIASES['DE'].add('vokietija')
+COUNTRY_ALIASES['NL'].update({'nyderlandai','holandija','holland'})
+COUNTRY_ALIASES['FI'].add('suomija')
+COUNTRY_ALIASES['SE'].add('svedija')
+COUNTRY_ALIASES['DK'].add('danija')
 ROLE_ALIASES={
  "general labour":{"general labour","general labor","unskilled","helper","nekvalifikuota","pagalbinis"},
  "mason":{"mason","bricklayer","murininkas","mūrininkas"},
@@ -41,7 +52,7 @@ def normalize_phone(v:Optional[str])->str:
  raw=clean(v)
  if not raw:return ""
  digits=re.sub(r"\D","",raw)
- return ("+" if raw.startswith("+") else "")+digits
+ return "+"+digits[2:] if raw.startswith("00") else ("+" if raw.startswith("+") else "")+digits
 def canonical_country(v:Optional[str])->str:
  x=fold(v)
  for code,aliases in COUNTRY_ALIASES.items():

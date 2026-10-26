@@ -80,12 +80,8 @@ def install(app,current_user,require_roles):
         if profile_ready(w):
             if not db.query(AuditLog).filter_by(tenant_id=w.tenant_id,entity_type='worker',entity_id=str(w.id),action='PROFILE_QUALIFIED').first():
                 db.add(AuditLog(tenant_id=w.tenant_id,actor=actor,action='PROFILE_QUALIFIED',entity_type='worker',entity_id=str(w.id),details='First complete profile; identity and documents still require separate verification'))
-            from collector.matching import score
-            for job in db.query(Project).filter(Project.tenant_id==w.tenant_id,Project.status.in_(['DRAFT','RECRUITING','ACTIVE'])).limit(100).all():
-                result=score(w,job)
-                candidate=db.query(ProjectCandidate).filter_by(project_id=job.id,worker_id=w.id).first()
-                if not candidate:candidate=ProjectCandidate(project_id=job.id,worker_id=w.id);db.add(candidate)
-                candidate.match_score=result['match_score'];candidate.fit_score=result['fit_score'];candidate.data_confidence=result['data_confidence'];candidate.eligibility='PASS' if result['eligible'] else 'REVIEW'
+            from collector.matching import sync_worker_matches
+            sync_worker_matches(db,w)
         db.commit()
     @app.get('/workers/{worker_id}/profile')
     def recruiter_form(worker_id:int,request:Request,db=Depends(get_db)):

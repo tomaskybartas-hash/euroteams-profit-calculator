@@ -65,3 +65,45 @@ def test_reply_inbox_hides_other_tenant_and_late_send_confirmation_keeps_interes
     assert 'Reply visible only to my recruiter' not in client.get('/responses').text
     client.cookies.clear()
     assert client.get('/responses',follow_redirects=False).status_code==303
+
+
+def test_registration_to_matching_to_interest_is_one_working_flow(setup):
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.models import Worker,Consent,Message,AuditLog
+    from test_built_app_smoke import registration_form
+    from urllib.parse import parse_qs
+    from collector.profile_quality import profile_ready
+    recruiter,engine=setup
+    applicant=TestClient(app)
+    applicant.cookies.set('et_language','en')
+    r=applicant.post('/join',data=registration_form(applicant,country='NO',preferred_countries='Germany',email='full-flow@example.test',phone='+4791234567',whatsapp_offers='yes'),follow_redirects=False)
+    assert r.status_code==303,r.text
+    with Session(engine) as db:
+        worker=db.query(Worker).filter_by(email='full-flow@example.test').one();wid=worker.id
+        assert profile_ready(worker) and worker.country=='NO'
+        assert db.query(ProjectCandidate).filter_by(worker_id=wid,project_id=1).one().eligibility=='REVIEW'
+    receipt=applicant.get('/join/received')
+    profile=BeautifulSoup(receipt.text,'html.parser').select_one('a[href$="/profile"]')['href']
+    page=applicant.get(profile)
+    fields={'csrf':hidden(page.text,'csrf'),'full_name':'QA Test Applicant','phone':'+4791234567','email':'full-flow@example.test','country':'NO','profession':'welder','skills':'MIG/MAG','languages':'English','certificates':'','preferred_countries':'NL','preferred_rotation':'6/2','years_experience':'6','availability_status':'AVAILABLE NOW','available_from':'','confirmed':'yes'}
+    assert applicant.post(profile,data=fields).status_code==200
+    with Session(engine) as db:
+        assert db.query(ProjectCandidate).filter_by(worker_id=wid,project_id=1).one().eligibility=='PASS'
+        assert db.query(AuditLog).filter_by(entity_type='worker',entity_id=str(wid),action='PROFILE_QUALIFIED').count()==1
+        assert db.query(Consent).filter_by(worker_id=wid,channel='Email').count()==0
+    page=recruiter.get(f'/workers/{wid}/request?job_id=1').text
+    prepared=recruiter.post(f'/workers/{wid}/request',data={'csrf':hidden(page,'csrf'),'nonce':hidden(page,'nonce'),'job_id':'1'})
+    assert prepared.status_code==200,prepared.text
+    wa=BeautifulSoup(prepared.text,'html.parser').select_one('a[href^="https://wa.me/"]')['href']
+    message=parse_qs(urlparse(wa).query)['text'][0]
+    offer=urlparse(re.search(r'https?://[^\s]+/offer/[^\s]+',message)[0]).path
+    page=applicant.get(offer)
+    result=applicant.post(offer,data={'form_token':hidden(page.text,'form_token'),'answer':'INTERESTED','note':'I am interested in this project; please contact me'})
+    assert result.status_code==200
+    assert 'I am interested in this project; please contact me' in recruiter.get('/responses').text
+    with Session(engine) as db:
+        assert db.query(OfferResponse).filter_by(worker_id=wid).one().answer=='INTERESTED'
+        assert db.query(ProjectCandidate).filter_by(worker_id=wid,project_id=1).one().stage=='INTERESTED'
+        assert db.query(ContactHistory).filter_by(worker_id=wid).one().status=='DRAFT_PREPARED'
+        assert db.query(Message).count()==0

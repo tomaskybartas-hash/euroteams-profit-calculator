@@ -725,3 +725,56 @@ LT.update({'Public jobseekers with phone numbers':'Vieši darbo ieškančių žm
 LT.update({'Public source research':'Viešų šaltinių tyrimas','Public contact examples can be viewed without registration. This does not mean automated collection is connected or permitted.':'Viešų kontaktų pavyzdžius galima peržiūrėti be registracijos. Tai nereiškia, kad automatinis rinkimas prijungtas ar leidžiamas.','Public contact access':'Viešų kontaktų prieiga','Automation status':'Automatinio rinkimo būsena','PUBLIC_PHONE_IN_AD':'Telefonas skelbime','PUBLIC_PHONE_IN_INDEXED_AD':'Telefonas indeksuotame skelbime','PUBLIC_PHONE_AND_EMAIL':'Vieši telefonai ir el. paštas','PUBLIC_PHONE_IN_SEARCH_INDEX':'Telefonas paieškos indekse','PUBLIC_PHONE_IN_AD_TEXT':'Telefonas skelbimo tekste','SOME_PUBLIC_PHONES_IN_AD_TEXT':'Dalyje skelbimų – vieši telefonai','SOME_PUBLIC_WHATSAPP_IN_AD_TEXT':'Dalyje skelbimų – vieši WhatsApp kontaktai','IMPLEMENTED_PENDING_LIVE_VERIFICATION':'Modulis įdiegtas; rezultatą žiūrėkite aukščiau','NOT_CONNECTED':'Neprijungta','EXCLUDED_TERMS':'Nejungiama dėl šaltinio taisyklių'})
 
 LT['These are ads, not verified worker profiles. Public contacts written directly in RSS can create unverified profiles; hidden contact details are never revealed.']='Tai skelbimai, o ne patikrinti darbuotojai. Tiesiogiai RSS tekste pateikti vieši kontaktai gali būti įtraukti kaip nepatikrinti profiliai; paslėpti kontaktai neatidengiami.'
+
+LT.update(dict(line.split('|',1) for line in '''Profession details (if Other)|Patikslinkite profesiją (jei pasirinkote Kita)
+Skills and work experience|Įgūdžiai ir darbo patirtis
+Describe the work you can do|Aprašykite, kokius darbus mokate
+Describe your skills or enter your years of experience.|Aprašykite įgūdžius arba nurodykite darbo patirties metus.
+Preferred work countries *|Pageidaujamos darbo šalys *
+Describe your skills or enter your experience|Aprašykite įgūdžius arba nurodykite darbo patirtį
+Enter the countries where you would like to work|Nurodykite, kuriose šalyse norėtumėte dirbti
+Describe your profession|Aprašykite savo profesiją
+Review or update my application|Peržiūrėti arba atnaujinti savo paraišką
+Save the private profile link to update your availability later. Keep it private.|Išsaugokite asmeninę profilio nuorodą, kad vėliau galėtumėte atnaujinti pasirengimą dirbti. Jos neviešinkite.
+Austria|Austrija
+Belgium|Belgija
+Croatia|Kroatija
+Cyprus|Kipras
+Czechia|Čekija
+Denmark|Danija
+Estonia|Estija
+Finland|Suomija
+France|Prancūzija
+Germany|Vokietija
+Greece|Graikija
+Hungary|Vengrija
+Ireland|Airija
+Luxembourg|Liuksemburgas
+Malta|Malta
+Netherlands|Nyderlandai
+Portugal|Portugalija
+Slovakia|Slovakija
+Slovenia|Slovėnija
+Sweden|Švedija
+Iceland|Islandija
+Liechtenstein|Lichtenšteinas
+Switzerland|Šveicarija
+United Kingdom|Jungtinė Karalystė
+Albania|Albanija
+Bosnia and Herzegovina|Bosnija ir Hercegovina
+Montenegro|Juodkalnija
+North Macedonia|Šiaurės Makedonija
+Serbia|Serbija
+Kosovo|Kosovas
+Ukraine|Ukraina
+Moldova|Moldova
+Turkey|Turkija
+Georgia|Sakartvelas
+Armenia|Armėnija
+Azerbaijan|Azerbaidžanas
+Belarus|Baltarusija
+Russia|Rusija
+Andorra|Andora
+Monaco|Monakas
+San Marino|San Marinas
+Vatican City|Vatikanas'''.splitlines()))

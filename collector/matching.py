@@ -37,3 +37,24 @@ def ranked_workers(db,project,tenant_id=1,limit=100,include_ineligible=False):
         if include_ineligible or result['eligible']:rows.append((worker,result))
     rows.sort(key=lambda item:(item[1]['eligible'],item[1]['match_score']),reverse=True)
     return rows[:limit]
+
+
+def sync_worker_matches(db,worker):
+    """Use the same live scoring for registration, profile completion and rematching.
+
+    Caller owns the transaction; existing recruiter stages and notes are retained.
+    """
+    from app.models import Project,ProjectCandidate
+    if not profile_ready(worker):return 0
+    count=0
+    for job in db.query(Project).filter(Project.tenant_id==worker.tenant_id,Project.status.in_(['DRAFT','RECRUITING','ACTIVE'])).limit(100).all():
+        result=score(worker,job)
+        candidate=db.query(ProjectCandidate).filter_by(project_id=job.id,worker_id=worker.id).first()
+        if not candidate:
+            candidate=ProjectCandidate(project_id=job.id,worker_id=worker.id)
+            db.add(candidate)
+        candidate.match_score=result['match_score'];candidate.fit_score=result['fit_score']
+        candidate.data_confidence=result['data_confidence']
+        candidate.eligibility='PASS' if result['eligible'] else 'REVIEW'
+        count+=1
+    return count
