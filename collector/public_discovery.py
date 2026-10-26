@@ -121,7 +121,7 @@ def refresh(db,tenant_id=1,client=None,*,source_key=SOURCE,country="LV",discover
     from contextlib import nullcontext
     from app.models import Worker,AuditLog
     from collector.coresignal import SourceRun,SourceProfile
-    from sqlalchemy import text,func
+    from sqlalchemy import text,func,or_
     import secrets
     now=datetime.utcnow()
     if db.get_bind().dialect.name=='postgresql':db.execute(text('SELECT pg_advisory_xact_lock(64132979)'))
@@ -145,10 +145,12 @@ def refresh(db,tenant_id=1,client=None,*,source_key=SOURCE,country="LV",discover
             if old:run.duplicates+=1;continue
             normalized=Worker.phone
             for char in (' ','-','(',')','.'):normalized=func.replace(normalized,char,'')
-            existing=db.query(Worker).filter(Worker.tenant_id==tenant_id,normalized==row['phone']).first()
+            checks=[normalized==row['phone']]
+            if row.get('email'):checks.append(func.lower(Worker.email)==row['email'].lower())
+            existing=db.query(Worker).filter(Worker.tenant_id==tenant_id,or_(*checks)).first()
             if existing:run.duplicates+=1;continue  # Never overwrite first-party profiles or revive consent.
             worker=Worker(tenant_id=tenant_id,full_name=row['full_name'],country=country,profession=row['profession'],
-                phone=row['phone'],email='',availability_status='UNKNOWN',eu_citizen=False,
+                phone=row['phone'],email=row.get('email',''),availability_status='UNKNOWN',eu_citizen=False,
                 ready_to_deploy=False,identity_verified=False,documents_verified=False,skills_verified=False,
                 years_experience=0,preferred_channel='Phone',self_service_token=secrets.token_urlsafe(32),
                 preferred_countries=row.get('preferred_countries',''),

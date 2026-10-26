@@ -6,7 +6,8 @@ from fastapi.responses import RedirectResponse,Response
 from app.db import SessionLocal,get_db
 
 # Translation keys also cover the legacy administration and document templates.
-PAIRS='''Lithuania, Poland, Bulgaria, Spain, Italy|Lietuva, Lenkija, Bulgarija, Ispanija, Italija
+PAIRS='''Lithuania, Bulgaria, Spain, Italy|Lietuva, Bulgarija, Ispanija, Italija
+Lithuania, Poland, Bulgaria, Spain, Italy|Lietuva, Lenkija, Bulgarija, Ispanija, Italija
 Source notes and restrictions|Šaltinio pastabos ir apribojimai
 project country outside stated preferences|Projekto šalis neatitinka nurodytų pageidavimų
 New unique worker profiles|Nauji unikalūs darbuotojų profiliai

@@ -91,6 +91,15 @@
       "automation": "EXCLUDED_TERMS",
       "terms": "https://info.subito.it/policies/condizioni-generali.htm",
       "note": "Real welder jobseeker with a public phone, but automated access/scraping expressly prohibited."
+    },
+    {
+      "country": "PL",
+      "source": "suwalki.info",
+      "url": "https://www.suwalki.info/ogloszenia/praca/praca-szukam",
+      "contact_access": "PUBLIC_PHONE_AND_EMAIL",
+      "automation": "IMPLEMENTED_PENDING_LIVE_VERIFICATION",
+      "terms": "https://www.suwalki.info/index.php/regulamin-ogloszenia",
+      "note": "Bounded two-page jobseeker listing reader, robots checked, 30-day publication cutoff, public phone/email deduplication. No personal or sensitive ad text retained. No messaging consent inferred."
     }
   ]
 }

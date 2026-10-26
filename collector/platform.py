@@ -337,7 +337,7 @@ def install(app,current_user,require_roles,page_ctx):
     @app.get('/sources',response_class=HTMLResponse)
     def sources(request:Request,db:Session=Depends(get_db)):
         user=user_for(request,db)
-        return render(request,user,'platform_sources.html',state=db.get(FreeSourceState,STATE_ID),runs=db.query(FreeCollectionRun).filter(FreeCollectionRun.tenant_id==user.tenant_id).order_by(FreeCollectionRun.id.desc()).limit(20).all(),lead_count=fresh_leads(db,user.tenant_id).count(),research=__import__('json').loads((Path(__file__).parent/'public_source_catalogue.json').read_text())['sources'],public_run=db.query(SourceRun).filter(SourceRun.tenant_id==user.tenant_id,SourceRun.run_key.like('liepajniekiem-public:%')).order_by(SourceRun.id.desc()).first(),romanian_run=db.query(SourceRun).filter(SourceRun.tenant_id==user.tenant_id,SourceRun.run_key.like('anunturi66-public:%')).order_by(SourceRun.id.desc()).first(),registrations=db.query(CandidateIntake).filter(CandidateIntake.tenant_id==user.tenant_id,CandidateIntake.status=='CREATED').count())
+        return render(request,user,'platform_sources.html',state=db.get(FreeSourceState,STATE_ID),runs=db.query(FreeCollectionRun).filter(FreeCollectionRun.tenant_id==user.tenant_id).order_by(FreeCollectionRun.id.desc()).limit(20).all(),lead_count=fresh_leads(db,user.tenant_id).count(),research=__import__('json').loads((Path(__file__).parent/'public_source_catalogue.json').read_text())['sources'],public_run=db.query(SourceRun).filter(SourceRun.tenant_id==user.tenant_id,SourceRun.run_key.like('liepajniekiem-public:%')).order_by(SourceRun.id.desc()).first(),romanian_run=db.query(SourceRun).filter(SourceRun.tenant_id==user.tenant_id,SourceRun.run_key.like('anunturi66-public:%')).order_by(SourceRun.id.desc()).first(),polish_run=db.query(SourceRun).filter(SourceRun.tenant_id==user.tenant_id,SourceRun.run_key.like('suwalki-public:%')).order_by(SourceRun.id.desc()).first(),registrations=db.query(CandidateIntake).filter(CandidateIntake.tenant_id==user.tenant_id,CandidateIntake.status=='CREATED').count())
 
     # Replace the legacy CSV export to prevent spreadsheet formula execution.
     app.router.routes[:]=[r for r in app.router.routes if getattr(r,'path','')!='/workers/export.csv']
@@ -461,4 +461,6 @@ def install(app,current_user,require_roles,page_ctx):
         from collector.romanian_discovery import refresh as romanian_refresh
         public_refresh(db,user.tenant_id)
         romanian_refresh(db,user.tenant_id)
+        from collector.polish_discovery import refresh as polish_refresh
+        polish_refresh(db,user.tenant_id)
         return RedirectResponse('/sources',303)

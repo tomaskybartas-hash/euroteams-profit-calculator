@@ -101,14 +101,16 @@ def test_manual_refresh_requires_admin_and_csrf(setup,monkeypatch):
     monkeypatch.setattr(source,'refresh',lambda db,tenant_id,force=False:calls.append((tenant_id,force)))
     import collector.public_discovery as public
     import collector.romanian_discovery as romanian
+    import collector.polish_discovery as polish
     readers=[]
     monkeypatch.setattr(public,'refresh',lambda db,tid:readers.append(('LV',tid)))
     monkeypatch.setattr(romanian,'refresh',lambda db,tid:readers.append(('RO',tid)))
+    monkeypatch.setattr(polish,'refresh',lambda db,tid:readers.append(('PL',tid)))
     assert client.post('/collector/free-source/run',data={}).status_code==403
     token=hidden(client.get('/sources').text,'csrf')
     assert client.post('/collector/free-source/run',data={'csrf':token},follow_redirects=False).status_code==303
     assert calls==[(1,True)]
-    assert readers==[('LV',1),('RO',1)]
+    assert readers==[('LV',1),('RO',1),('PL',1)]
     with Session(engine) as db:
         db.get(AppUser,1).role='viewer';db.commit()
     assert client.post('/collector/free-source/run',data={'csrf':token}).status_code==403

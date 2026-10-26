@@ -235,6 +235,8 @@ def install(app,current_user,require_roles,page_ctx):
         result["public_jobseekers"]=refresh_public_jobseekers(db,tid)
         from collector.romanian_discovery import refresh as refresh_romanian_jobseekers
         result["romanian_jobseekers"]=refresh_romanian_jobseekers(db,tid)
+        from collector.polish_discovery import refresh as refresh_polish_jobseekers
+        result["polish_jobseekers"]=refresh_polish_jobseekers(db,tid)
         from collector.acquisition_metrics import save_previous_day
         save_previous_day(db,tid)
         return result

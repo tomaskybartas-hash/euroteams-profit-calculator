@@ -1,0 +1,39 @@
+name: Workforce collector checks
+on:
+  push:
+    branches: [workforce-worker-collector-v1]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: 'sqlite:///:memory:'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build the deployed workforce application
+        run: |
+          cat wlprod_clean.part00 wlprod_clean.part01 wlprod_clean.part02 wlprod_clean.part03 wlprod_clean.part04 > workforce_live_prod_clean.b64
+          base64 -d workforce_live_prod_clean.b64 > workforce_live_prod_clean.zip
+          unzip -oq workforce_live_prod_clean.zip
+          cp ui_overrides/base.html workforce_live_prod_clean/app/templates/base.html
+          cp ui_overrides/dashboard.html workforce_live_prod_clean/app/templates/dashboard.html
+          cp ui_overrides/login.html workforce_live_prod_clean/app/templates/login.html
+          cp ui_overrides/styles.css workforce_live_prod_clean/app/static/styles.css
+          cat autopilot_overrides/project.css >> workforce_live_prod_clean/app/static/styles.css
+          cp autopilot_overrides/project_detail.html workforce_live_prod_clean/app/templates/project_detail.html
+          cat autopilot_overrides/autopilot_routes.pyfrag >> workforce_live_prod_clean/app/main.py
+          cp -r collector workforce_live_prod_clean/collector
+          cp collector/collector.html workforce_live_prod_clean/app/templates/collector.html
+          cat collector/runtime_routes.pyfrag >> workforce_live_prod_clean/app/main.py
+          python -m pip install -r workforce_live_prod_clean/requirements.txt
+      - name: Verify acquisition, matching and candidate response flows
+        working-directory: workforce_live_prod_clean
+        env:
+          PYTHONPATH: .:..
+        run: python -m pytest ../tests/test_public_discovery.py ../tests/test_romanian_discovery.py ../tests/test_polish_discovery.py ../tests/test_collection_history.py ../tests/test_platform_flow.py ../tests/test_offer_responses.py ../tests/test_email_offers.py ../tests/test_built_app_smoke.py ../tests/test_worker_collector.py ../tests/test_workforce_bridge_refresh.py ../tests/test_import_pipeline.py -q --disable-warnings
