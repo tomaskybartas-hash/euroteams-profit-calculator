@@ -69,3 +69,16 @@ def test_source_failure_is_audited_and_contains_no_contact_data(setup,monkeypatc
         assert result['state']=='FAILED' and result['error']=='robots_unavailable'
         assert result['added']==0 and 'phone' not in str(result)
         assert db.query(SourceProfile).count()==0
+
+
+def test_interrupted_public_run_recovers_without_six_hour_lockout(setup,monkeypatch):
+    _,engine=setup
+    monkeypatch.setattr(source,'discover',lambda c:([],0))
+    with Session(engine) as db:
+        db.add(SourceRun(tenant_id=1,run_key=source.SOURCE+':1:interrupted',state='RUNNING',created_at=datetime.utcnow()-timedelta(minutes=11)))
+        db.commit()
+        result=source.refresh(db,1,client=object())
+        assert result['state']=='COMPLETED' and not result['cached']
+        rows=db.query(SourceRun).order_by(SourceRun.id).all()
+        assert len(rows)==2 and rows[0].error_code=='INTERRUPTED'
+        assert rows[0].finished_at is not None

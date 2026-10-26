@@ -126,6 +126,10 @@ def refresh(db,tenant_id=1,client=None,*,source_key=SOURCE,country="LV",discover
     now=datetime.utcnow()
     if db.get_bind().dialect.name=='postgresql':db.execute(text('SELECT pg_advisory_xact_lock(64132979)'))
     previous=db.query(SourceRun).filter(SourceRun.tenant_id==tenant_id,SourceRun.run_key.like(source_key+':%')).order_by(SourceRun.id.desc()).first()
+    if previous and previous.state=='RUNNING' and now-previous.created_at>timedelta(minutes=10):
+        previous.state='FAILED';previous.error_code='INTERRUPTED';previous.finished_at=now
+        db.commit()
+        previous=None
     if previous and now-previous.created_at<timedelta(hours=6):
         result={'state':previous.state,'added':previous.added,'found':previous.found,'duplicates':previous.duplicates,'error':previous.error_code,'cached':True}
         db.commit();return result
