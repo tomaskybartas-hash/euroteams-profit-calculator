@@ -1,4 +1,5 @@
 {% extends 'base.html' %}{% block content %}
+<div class="actions" style="margin-bottom:16px"><a class="btn" href="/projects/{{project.id}}/edit">Edit job</a><a class="btn primary" href="/matches?job_id={{project.id}}">Matches</a></div>
 {% set ns = namespace(ready=0, reserved=0, qualified=0, interested=0, contacted=0) %}
 {% for c in candidates %}
   {% if c.stage == 'READY_TO_DEPLOY' %}{% set ns.ready = ns.ready + 1 %}{% endif %}
@@ -17,22 +18,23 @@
 
 <div class="stats project-stats"><div class="stat"><span>WORKERS NEEDED</span><strong>{{project.workers_needed}}</strong></div><div class="stat good"><span>SECURED</span><strong>{{secured}}</strong></div><div class="stat"><span>48H RESERVED</span><strong>{{ns.reserved}}</strong></div><div class="stat"><span>READY</span><strong>{{ns.ready}}</strong></div><div class="stat"><span>QUALIFIED</span><strong>{{ns.qualified}}</strong></div><div class="stat"><span>INTERESTED</span><strong>{{ns.interested}}</strong></div><div class="stat"><span>CONTACTED</span><strong>{{ns.contacted}}</strong></div><div class="stat"><span>RATE</span><strong>€{{'%.0f'|format(project.salary_net_hour)}}</strong></div></div>
 
-<section class="card"><div class="section-head"><div><span class="eyebrow">LIVE PIPELINE</span><h2>Candidate pipeline & deployment blockers</h2></div><span class="muted">AI recommends · Human decides</span></div>{% if candidates %}<div class="table-wrap"><table class="dense"><thead><tr><th>Worker</th><th>Match</th><th>Stage</th><th>Screening</th><th>Deployment state</th><th>Blockers / reservation</th><th>Action</th></tr></thead><tbody>{% for c in candidates %}<tr class="candidate-row" data-meta="{{c.notes|e}}"><td><a href="/workers/{{c.worker.id}}"><strong>{{c.worker.full_name}}</strong></a><small>{{c.worker.profession}} · {{c.worker.country}}</small><small>Interest {{c.interest_probability}}% · Arrival {{c.arrival_probability}}%</small></td><td><strong class="score">{{c.match_score}}%</strong><small>Confidence {{c.data_confidence}}%</small></td><td><form method="post" action="/candidates/{{c.id}}/stage"><select name="stage" onchange="this.form.submit()">{% for s in ['MATCHED','CONTACTED','INTERESTED','QUALIFIED','RESERVED','READY_TO_DEPLOY','DECLINED','REJECTED'] %}<option {% if c.stage==s %}selected{% endif %}>{{s}}</option>{% endfor %}</select></form></td><td><a class="pill {% if c.screening_status=='COMPLETE' %}good{% endif %}" href="/candidates/{{c.id}}/screening">{{c.screening_status}}</a></td><td>{% if c.stage=='READY_TO_DEPLOY' %}<span class="pill good">READY TO DEPLOY</span>{% elif c.stage=='RESERVED' %}<span class="pill warn">48H RESERVED</span>{% elif c.worker.ready_to_deploy and c.screening_status=='COMPLETE' %}<span class="pill good">CHECK NOW</span>{% else %}<span class="pill">BLOCKED</span>{% endif %}</td><td class="candidate-meta"><span class="blocker-text muted">Not checked yet</span><small class="reservation-text"></small></td><td><div class="candidate-actions"><form method="post" action="/candidates/{{c.id}}/readiness"><button class="btn tiny">Check readiness</button></form><form method="post" action="/candidates/{{c.id}}/send"><button class="btn tiny">Send offer</button></form>{% if c.stage in ['INTERESTED','QUALIFIED','READY_TO_DEPLOY'] %}<form method="post" action="/candidates/{{c.id}}/reserve"><button class="btn tiny">Reserve 48h</button></form>{% elif c.stage=='RESERVED' %}<form method="post" action="/candidates/{{c.id}}/unreserve"><button class="btn tiny">Release</button></form>{% endif %}</div><small>{{c.outreach_channel}}</small></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty">Recruitment has not started. Use Recruitment Autopilot to build the pipeline.</div>{% endif %}</section>
+<section class="card"><div class="section-head"><div><span class="eyebrow">LIVE PIPELINE</span><h2>Candidate pipeline & deployment blockers</h2></div><span class="muted">AI recommends · Human decides</span></div>{% if candidates %}<div class="table-wrap"><table class="dense"><thead><tr><th>Worker</th><th>Match</th><th>Stage</th><th>Screening</th><th>Deployment state</th><th>Blockers / reservation</th><th>Action</th></tr></thead><tbody>{% for c in candidates %}<tr class="candidate-row" data-meta="{{c.notes|e}}"><td><a href="/workers/{{c.worker.id}}"><strong>{{c.worker.full_name}}</strong></a><small><a class="btn tiny" href="/workers/{{c.worker.id}}/request?job_id={{project.id}}">Send Job Request</a></small><small>{{c.worker.profession}} · {{c.worker.country}}</small><small>Interest {{c.interest_probability}}% · Arrival {{c.arrival_probability}}%</small></td><td><strong class="score">{{c.match_score}}%</strong><small>Confidence {{c.data_confidence}}%</small></td><td><form method="post" action="/candidates/{{c.id}}/stage"><select name="stage" onchange="this.form.submit()">{% for s in ['MATCHED','CONTACTED','INTERESTED','QUALIFIED','RESERVED','READY_TO_DEPLOY','DECLINED','REJECTED'] %}<option {% if c.stage==s %}selected{% endif %}>{{s}}</option>{% endfor %}</select></form></td><td><a class="pill {% if c.screening_status=='COMPLETE' %}good{% endif %}" href="/candidates/{{c.id}}/screening">{{c.screening_status}}</a></td><td>{% if c.stage=='READY_TO_DEPLOY' %}<span class="pill good">READY TO DEPLOY</span>{% elif c.stage=='RESERVED' %}<span class="pill warn">48H RESERVED</span>{% elif c.worker.ready_to_deploy and c.screening_status=='COMPLETE' %}<span class="pill good">CHECK NOW</span>{% else %}<span class="pill">BLOCKED</span>{% endif %}</td><td class="candidate-meta"><span class="blocker-text muted">Not checked yet</span><small class="reservation-text"></small></td><td><div class="candidate-actions"><form method="post" action="/candidates/{{c.id}}/readiness"><button class="btn tiny">Check readiness</button></form><form method="post" action="/candidates/{{c.id}}/send"><button class="btn tiny">Send offer</button></form>{% if c.stage in ['INTERESTED','QUALIFIED','READY_TO_DEPLOY'] %}<form method="post" action="/candidates/{{c.id}}/reserve"><button class="btn tiny">Reserve 48h</button></form>{% elif c.stage=='RESERVED' %}<form method="post" action="/candidates/{{c.id}}/unreserve"><button class="btn tiny">Release</button></form>{% endif %}</div><small>{{c.outreach_channel}}</small></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty">Recruitment has not started. Use Recruitment Autopilot to build the pipeline.</div>{% endif %}</section>
 
-<section class="two-col project-bottom"><section class="card"><div class="section-head"><h2>Live matching preview</h2><span class="muted">Best current supply</span></div><div class="table-wrap"><table class="dense"><thead><tr><th>Worker</th><th>Match</th><th>Interest</th><th>Arrival</th><th>Why</th></tr></thead><tbody>{% for w,r in preview[:12] %}<tr><td><a href="/workers/{{w.id}}"><strong>{{w.full_name}}</strong></a><small>{{w.profession}}</small></td><td><strong>{{r.match_score}}%</strong></td><td>{{r.interest_probability}}%</td><td>{{r.arrival_probability}}%</td><td><small>{{r.reasons|join(', ')}}</small></td></tr>{% endfor %}</tbody></table></div></section><section class="card"><div class="section-head"><h2>Recruitment activity</h2><span class="muted">Latest communication</span></div>{% for m in messages[:12] %}<div class="message"><span>{{m.created_at.strftime('%Y-%m-%d %H:%M')}} · {{m.channel}} · {{m.provider_status}}</span>{{m.body}}</div>{% else %}<div class="empty">No outreach yet.</div>{% endfor %}</section></section>
+<section class="two-col project-bottom"><section class="card"><div class="section-head"><h2>Live matching preview</h2><span class="muted">Best current supply</span></div><div class="table-wrap"><table class="dense"><thead><tr><th>Worker</th><th>Match</th><th>Interest</th><th>Arrival</th><th>Why</th></tr></thead><tbody>{% for w,r in preview[:12] %}<tr><td><a href="/workers/{{w.id}}"><strong>{{w.full_name}}</strong></a><small><a class="btn tiny" href="/workers/{{w.id}}/request?job_id={{project.id}}">Send Job Request</a></small><small>{{w.profession}}</small></td><td><strong>{{r.match_score}}%</strong></td><td>{{r.interest_probability}}%</td><td>{{r.arrival_probability}}%</td><td><small>{{r.reasons|join(', ')}}</small></td></tr>{% endfor %}</tbody></table></div></section><section class="card"><div class="section-head"><h2>Recruitment activity</h2><span class="muted">Latest communication</span></div>{% for m in messages[:12] %}<div class="message"><span>{{m.created_at.strftime('%Y-%m-%d %H:%M')}} · {{m.channel}} · {{m.provider_status}}</span>{{m.body}}</div>{% else %}<div class="empty">No outreach yet.</div>{% endfor %}</section></section>
 
 <script>
 (function(){
  const badge=document.getElementById('urgencyBadge');
+ const lt=document.documentElement.lang==='lt';
  if(badge){
    const start=new Date(badge.dataset.start+'T00:00:00');
    const today=new Date(); today.setHours(0,0,0,0);
    const days=Math.ceil((start-today)/86400000);
-   if(days<0){badge.textContent='START DATE PASSED';badge.classList.add('danger-pill');}
-   else if(days<=7){badge.textContent='CRITICAL · '+days+' DAYS';badge.classList.add('danger-pill');}
-   else if(days<=21){badge.textContent='HIGH URGENCY · '+days+' DAYS';badge.classList.add('warn');}
-   else if(days<=45){badge.textContent='ACTIVE · '+days+' DAYS';}
-   else{badge.textContent='PLANNED · '+days+' DAYS';}
+   if(days<0){badge.textContent=(lt?'PRADŽIOS DATA PRAĖJO':'START DATE PASSED');badge.classList.add('danger-pill');}
+   else if(days<=7){badge.textContent=(lt?'KRITINIS · ':'CRITICAL · ')+days+(lt?' D.':' DAYS');badge.classList.add('danger-pill');}
+   else if(days<=21){badge.textContent=(lt?'SKUBU · ':'HIGH URGENCY · ')+days+(lt?' D.':' DAYS');badge.classList.add('warn');}
+   else if(days<=45){badge.textContent=(lt?'AKTYVUS · ':'ACTIVE · ')+days+(lt?' D.':' DAYS');}
+   else{badge.textContent=(lt?'PLANUOJAMAS · ':'PLANNED · ')+days+(lt?' D.':' DAYS');}
  }
  document.querySelectorAll('.candidate-row').forEach(function(row){
    const meta=row.dataset.meta||'';
@@ -43,15 +45,15 @@
    const bt=row.querySelector('.blocker-text');
    const rt=row.querySelector('.reservation-text');
    if(bt){
-     if(blockers==='NONE'){bt.textContent='No blockers';bt.classList.remove('muted');bt.classList.add('good-text');}
+     if(blockers==='NONE'){bt.textContent=(lt?'Kliūčių nėra':'No blockers');bt.classList.remove('muted');bt.classList.add('good-text');}
      else if(blockers){bt.textContent=blockers;}
-     else{bt.textContent='Run readiness check';}
-     if(checked) bt.title='Checked '+checked.replace('T',' ');
+     else{bt.textContent=(lt?'Patikrinkite pasirengimą':'Run readiness check');}
+     if(checked) bt.title=(lt?'Patikrinta ':'Checked ')+checked.replace('T',' ');
    }
    if(rt&&until){
      const expiry=new Date(until);
      const hours=Math.max(0,Math.ceil((expiry-new Date())/3600000));
-     rt.textContent='Reservation expires in ~'+hours+'h';
+     rt.textContent=(lt?'Rezervacija galioja dar ~':'Reservation expires in ~')+hours+(lt?' val.':'h');
    }
  });
 })();

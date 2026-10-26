@@ -1,0 +1,105 @@
+{
+  "reviewed_at": "2026-10-26",
+  "scope": "Public access discovery, not proof of candidate identity or bulk-ingestion permission",
+  "sources": [
+    {
+      "country": "LV",
+      "source": "liepajniekiem.lv",
+      "url": "https://www.liepajniekiem.lv/sludinajumi/darbs/mekleju-darbu/",
+      "example": "https://www.liepajniekiem.lv/sludinajumi/darbs/mekleju-darbu/mekleju-darbu-9a44/",
+      "contact_access": "PUBLIC_PHONE_IN_AD",
+      "automation": "IMPLEMENTED_PENDING_LIVE_VERIFICATION",
+      "terms": "https://www.liepajniekiem.lv/autortiesibas/",
+      "note": "Attribution link required. Public jobseeker facts only; no names, availability verification or messaging opt-in inferred."
+    },
+    {
+      "country": "PL",
+      "source": "spawalnictwo.com.pl",
+      "url": "https://www.spawalnictwo.com.pl/index.php?go=praca",
+      "example": "https://spawalnictwo.com.pl/index.php?akcja=zobacz&go=praca&szukam=7121",
+      "contact_access": "PUBLIC_PHONE_IN_INDEXED_AD",
+      "automation": "NOT_CONNECTED",
+      "note": "TIG 141 jobseeker advertisement valid 2026-10-05 through 2026-11-05; English and foreign work self-declared. Direct retrieval returned 403; do not bypass."
+    },
+    {
+      "country": "PL",
+      "source": "Stalowka.NET",
+      "url": "https://www.stalowka.net/stalowa-wola/ogloszenia_1_0.html",
+      "contact_access": "PUBLIC_PHONE_AND_EMAIL",
+      "automation": "EXCLUDED_TERMS",
+      "terms": "https://www.stalowka.net/prawa_autorskie.php",
+      "note": "Real recent work-seeking advertisements, but reuse restricted by copyright/database policy."
+    },
+    {
+      "country": "RO",
+      "source": "anunturi66.ro",
+      "url": "https://www.anunturi66.ro/afaceri-industrie-joburi/locuri-de-munca/cereri/",
+      "example": "https://www.anunturi66.ro/sudor-caut-de-munca-in-tara-190209",
+      "contact_access": "PUBLIC_PHONE_IN_AD",
+      "automation": "IMPLEMENTED_PENDING_LIVE_VERIFICATION",
+      "note": "Bounded public jobseeker reader: robots checked, visible description contacts only, 30-day update cutoff, phone and URL deduplication. Romania-only preferences retained. No identity, current availability or messaging opt-in inferred.",
+      "terms": "https://www.anunturi66.ro/termeni-si-conditii"
+    },
+    {
+      "country": "BG",
+      "source": "Marica classifieds",
+      "url": "https://obqvi.marica.bg/rabota/tarsq-rabota",
+      "example": "https://obqvi.marica.bg/rabota/tarsq-rabota/tarsya-rabota-kato-zavarchik-ili-mehanos-84526",
+      "contact_access": "PUBLIC_PHONE_IN_SEARCH_INDEX",
+      "automation": "NOT_CONNECTED",
+      "note": "Welder/mechanical fitter seeker; current direct retrieval 403. Indexed publication says today but no absolute date verified. No automatic import."
+    },
+    {
+      "country": "BG",
+      "source": "Bazar.bg",
+      "url": "https://bazar.bg/obiavi/rabota",
+      "example": "https://bazar.bg/obiava-48898885/tarsia-rabota-stroitelstwo-remonti-zawarachni-uslugi",
+      "contact_access": "PUBLIC_PHONE_IN_AD_TEXT",
+      "automation": "NOT_CONNECTED",
+      "note": "Construction and welding work sought. Distinguish personal employment interest from service providers. Terms and runtime retrieval remain to be validated."
+    },
+    {
+      "country": "LT",
+      "source": "Alio.lt",
+      "url": "https://www.alio.lt/paieska/ieskau-darbo/",
+      "contact_access": "SOME_PUBLIC_PHONES_IN_AD_TEXT",
+      "automation": "NOT_CONNECTED",
+      "note": "Real work-seeking ads include a tiler/driver in Vilnius. Filter employers, services and stale ads; avoid sensitive personal statements. Runtime and reuse terms not confirmed."
+    },
+    {
+      "country": "LT",
+      "source": "Begalybe.lt",
+      "url": "https://begalybe.lt/darbas-paslaugos/ieskau-darbo",
+      "contact_access": "SOME_PUBLIC_PHONES_IN_AD_TEXT",
+      "automation": "NOT_CONNECTED",
+      "note": "Category mixes service advertisements with jobseekers; most displayed listings are stale. Category count cannot be used as unique candidate count."
+    },
+    {
+      "country": "ES",
+      "source": "Milanuncios",
+      "url": "https://www.milanuncios.com/ofertas-de-empleo/soldador.htm",
+      "contact_access": "SOME_PUBLIC_WHATSAPP_IN_AD_TEXT",
+      "automation": "NOT_CONNECTED",
+      "note": "A MIG/MAG seeker in Valencia explicitly provides a WhatsApp contact. Do not infer Euroteams-specific recurring messaging consent. Runtime and reuse conditions not verified."
+    },
+    {
+      "country": "IT",
+      "source": "Subito",
+      "url": "https://www.subito.it/annunci-italia/vendita/cerco-lavoro/?q=saldatore",
+      "example": "https://www.subito.it/cerco-lavoro/saldatore-a-filo-continuo-elettrodo-tig-milano-663584677.htm",
+      "contact_access": "SOME_PUBLIC_PHONES_IN_AD_TEXT",
+      "automation": "EXCLUDED_TERMS",
+      "terms": "https://info.subito.it/policies/condizioni-generali.htm",
+      "note": "Real welder jobseeker with a public phone, but automated access/scraping expressly prohibited."
+    },
+    {
+      "country": "PL",
+      "source": "suwalki.info",
+      "url": "https://www.suwalki.info/ogloszenia/praca/praca-szukam",
+      "contact_access": "PUBLIC_PHONE_AND_EMAIL",
+      "automation": "IMPLEMENTED_PENDING_LIVE_VERIFICATION",
+      "terms": "https://www.suwalki.info/index.php/regulamin-ogloszenia",
+      "note": "Bounded two-page jobseeker listing reader, robots checked, 30-day publication cutoff, public phone/email deduplication. No personal or sensitive ad text retained. No messaging consent inferred."
+    }
+  ]
+}
