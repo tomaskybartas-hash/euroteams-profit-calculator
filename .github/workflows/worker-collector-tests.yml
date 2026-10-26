@@ -36,7 +36,7 @@ jobs:
           cp -r collector workforce_live_prod_clean/collector
           cp collector/collector.html workforce_live_prod_clean/app/templates/collector.html
           cat collector/runtime_routes.pyfrag >> workforce_live_prod_clean/app/main.py
-      - run: python -m pip install -r workforce_live_prod_clean/requirements.txt
+      - run: python -m pip install -r workforce_live_prod_clean/requirements.txt beautifulsoup4
       - name: Smoke test assembled app
         working-directory: workforce_live_prod_clean
         run: python -m pytest -q ../tests/test_built_app_smoke.py
@@ -61,12 +61,13 @@ jobs:
           cp -r collector workforce_live_prod_clean/collector
           cp collector/collector.html workforce_live_prod_clean/app/templates/collector.html
           cat collector/runtime_routes.pyfrag >> workforce_live_prod_clean/app/main.py
-          python -m pip install -r workforce_live_prod_clean/requirements.txt
+          python -m pip install -r workforce_live_prod_clean/requirements.txt beautifulsoup4
       - name: Assert Collector packaged in production build
         run: |
           test -f workforce_live_prod_clean/collector/worker_collector.py
           grep -q 'WORKFORCE_COLLECTOR_ROUTES_V1' workforce_live_prod_clean/app/main.py
-          grep -q 'href="/collector"' workforce_live_prod_clean/app/templates/base.html
+          test -f workforce_live_prod_clean/collector/templates/platform_sources.html
+          test -f workforce_live_prod_clean/collector/polish_discovery.py
       - name: Smoke test production build path
         working-directory: workforce_live_prod_clean
         run: python -m pytest -q ../tests/test_built_app_smoke.py
