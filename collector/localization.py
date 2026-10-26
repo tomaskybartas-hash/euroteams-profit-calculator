@@ -778,3 +778,11 @@ Andorra|Andora
 Monaco|Monakas
 San Marino|San Marinas
 Vatican City|Vatikanas'''.splitlines()))
+
+LT.update(dict(line.split('|',1) for line in """Applications needing review|Paraiškos peržiūrai
+Review the submitted details with the candidate before saving. Existing profile data has not been changed. Messaging permissions are not transferred automatically.|Prieš išsaugodami patikslinkite pateiktus duomenis su kandidatu. Esamas profilis dar nepakeistas. Leidimai siųsti žinutes automatiškai neperkeliami.
+These people submitted an application using contact details already stored in the database. Confirm the person before updating the existing profile.|Šie žmonės pateikė paraišką su duomenų bazėje jau esančiais kontaktais. Prieš atnaujindami esamą profilį patikslinkite asmenį.
+Existing profile|Esamas profilis
+Review application|Peržiūrėti paraišką
+No applications are waiting for review.|Laukiančių peržiūros paraiškų nėra.
+Repeat applications are saved for recruiter review and do not automatically change an existing profile. For corrections, contact|Pakartotinės paraiškos išsaugomos atrankos specialisto peržiūrai ir automatiškai nekeičia esamo profilio. Dėl patikslinimų susisiekite:""".splitlines()))

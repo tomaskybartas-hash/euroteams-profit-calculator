@@ -103,3 +103,57 @@ def test_destination_names_match_codes_and_norway_is_not_boolean_no(setup):
         result=score(w,db.get(Project,1))
         assert 'project country outside stated preferences' not in result['hard_failures']
         assert 'Country preference matches' in result['reasons']
+
+
+def test_existing_source_contact_application_is_preserved_for_scoped_recruiter_review(setup):
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from test_built_app_smoke import registration_form
+    from app.models import ProjectCandidate
+    from bs4 import BeautifulSoup
+    client,engine=setup
+    applicant=TestClient(app)
+    r=applicant.post('/join',data=registration_form(applicant,full_name='Updated Real Candidate',phone='+37060012345',email='qa-worker@example.test',skills='MIG/MAG welding',preferred_countries='NL',whatsapp_offers='yes'),follow_redirects=False)
+    assert r.status_code==303
+    with Session(engine) as db:
+        worker=db.get(Worker,1)
+        assert worker.full_name=='QA Welder' and not profile_ready(worker)
+        application=db.query(AuditLog).filter_by(action='APPLICATION_REVIEW_REQUESTED').one();aid=application.id
+        assert db.query(Consent).count()==1
+    assert applicant.get('/applications',follow_redirects=False).status_code==303
+    queue=client.get('/applications')
+    assert queue.status_code==200 and 'Updated Real Candidate' in queue.text
+    assert client.get(f'/workers/2/profile?application={aid}').status_code==404
+    form=client.get(f'/workers/1/profile?application={aid}')
+    soup=BeautifulSoup(form.text,'html.parser')
+    assert soup.select_one('input[name="full_name"]')['value']=='Updated Real Candidate'
+    assert soup.select_one('input[name="skills"]')['value']=='MIG/MAG welding'
+    with Session(engine) as db:assert db.get(Worker,1).full_name=='QA Welder'
+    payload=dict(data('Updated Real Candidate'),csrf=hidden(form.text,'csrf'),application_id=str(aid),confirmed='')
+    assert client.post('/workers/1/profile',data=payload).status_code==422
+    payload['confirmed']='yes'
+    assert client.post('/workers/1/profile',data=payload,follow_redirects=False).status_code==303
+    with Session(engine) as db:
+        worker=db.get(Worker,1)
+        assert worker.full_name=='Updated Real Candidate' and profile_ready(worker)
+        assert not worker.identity_verified and not worker.ready_to_deploy
+        assert db.query(Consent).count()==1
+        assert db.query(ProjectCandidate).filter_by(worker_id=1,project_id=1).one().eligibility=='PASS'
+        assert db.query(AuditLog).filter_by(action='APPLICATION_REVIEWED',entity_type='application',entity_id=str(aid)).count()==1
+    assert 'Updated Real Candidate' not in client.get('/applications').text
+    assert client.get(f'/workers/1/profile?application={aid}').status_code==404
+
+
+def test_application_queue_does_not_leak_other_tenant_or_apply_forged_application(setup):
+    import json
+    client,engine=setup
+    with Session(engine) as db:
+        db.add(AuditLog(tenant_id=2,actor='candidate-portal',action='APPLICATION_REVIEW_REQUESTED',entity_type='worker',entity_id='2',details=json.dumps({'values':{'full_name':'Other private candidate'}})))
+        db.commit()
+        aid=db.query(AuditLog).filter_by(tenant_id=2).one().id
+    assert 'Other private candidate' not in client.get('/applications').text
+    assert client.get(f'/workers/1/profile?application={aid}').status_code==404
+    form=client.get('/workers/1/profile')
+    payload=dict(data(),csrf=hidden(form.text,'csrf'),application_id=str(aid))
+    assert client.post('/workers/1/profile',data=payload).status_code==404
+    with Session(engine) as db:assert db.get(Worker,1).full_name=='QA Welder'

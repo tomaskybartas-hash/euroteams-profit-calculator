@@ -1,6 +1,7 @@
 """First-party candidate acquisition. Public input never updates an existing worker."""
 from datetime import date, datetime, timedelta
 from pathlib import Path
+import json
 import math
 import os
 import re
@@ -119,6 +120,9 @@ def collect(db, values, nonce, tenant_id, offer_permission=False, request_key=""
         # Never reveal an existing private portal token or overwrite verified data.
         row = CandidateIntake(tenant_id=tenant_id, worker_id=existing.id, nonce=nonce, status='DUPLICATE', request_key=request_key)
         db.add(row)
+        # A matching contact is not proof of ownership. Preserve the submitted
+        # application for recruiter review instead of dropping it or overwriting.
+        db.add(AuditLog(tenant_id=tenant_id,actor='candidate-portal',action='APPLICATION_REVIEW_REQUESTED',entity_type='worker',entity_id=str(existing.id),details=json.dumps({'values':values,'email_permission_requested':bool(offer_permission),'whatsapp_permission_requested':bool(whatsapp_permission)},default=str,ensure_ascii=False)))
         db.commit()
         return {'created': False, 'worker_id': existing.id}
     worker = Worker(tenant_id=tenant_id, **values,

@@ -1,7 +1,8 @@
 """Authenticated recruiter editing and private candidate-owned profile completion."""
 from datetime import date
 from pathlib import Path
-import hashlib,hmac,re,secrets
+import hashlib,hmac,re,secrets,json
+from types import SimpleNamespace
 from fastapi import Request,Depends,HTTPException
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -31,14 +32,26 @@ def install(app,current_user,require_roles):
         if not w:raise HTTPException(404,'Profile not found')
         if w.identity_verified or w.documents_verified or w.skills_verified:raise HTTPException(403,'Contact your recruiter to change a verified profile')
         return w
-    def show(request,w,user=None,token=None,error='',status=200):
+    def proposal(db,w,application_id):
+        if not application_id:return None
+        row=db.query(AuditLog).filter_by(id=application_id,tenant_id=w.tenant_id,entity_type='worker',entity_id=str(w.id),action='APPLICATION_REVIEW_REQUESTED').first()
+        reviewed=db.query(AuditLog).filter_by(tenant_id=w.tenant_id,action='APPLICATION_REVIEWED',entity_type='application',entity_id=str(application_id)).first()
+        if not row or reviewed:raise HTTPException(404,'Application not found or already reviewed')
+        return row
+    def show(request,w,user=None,token=None,error='',status=200,application=None):
+        if application:
+            supplied=json.loads(application.details)['values']
+            preview={key:getattr(w,key) for key in FIELDS}
+            preview.update({key:supplied[key] for key in FIELDS if key in supplied})
+            preview.update(id=w.id,last_availability_confirmed=w.last_availability_confirmed)
+            w=SimpleNamespace(**preview)
         is_private=token is not None
         signed=signer().dumps({'wid':w.id,'key':hashlib.sha256(token.encode()).hexdigest(),'nonce':secrets.token_urlsafe(20)}) if is_private else csrf(request)
-        response=views.TemplateResponse(request,'profile_completion.html',dict(request=request,worker=w,user=user,private=is_private,form_csrf=signed,error=error,missing=missing_fields(w),has_name=has_name(w.full_name),lang=language(request),t=lambda s:translate(s,language(request)),asset_version=asset_version()),status_code=status)
+        response=views.TemplateResponse(request,'profile_completion.html',dict(request=request,worker=w,user=user,private=is_private,form_csrf=signed,error=error,missing=missing_fields(w),has_name=has_name(w.full_name),lang=language(request),t=lambda s:translate(s,language(request)),asset_version=asset_version(),application_id=application.id if application else None),status_code=status)
         response.headers['Cache-Control']='no-store, private';response.headers['Referrer-Policy']='no-referrer';response.headers['X-Robots-Tag']='noindex, nofollow'
         if is_private:response.set_cookie('profile_completion',signed,secure=request.url.scheme=='https',httponly=True,samesite='lax',max_age=3600,path=request.url.path)
         return response
-    def save(db,w,form,actor,is_private):
+    def save(db,w,form,actor,is_private,application=None):
         values={k:str(form.get(k,'')).strip() for k in FIELDS}
         if any(len(v)>(getattr(Worker.__table__.columns[k].type,'length',None) or 2000) for k,v in values.items()):raise ValueError('Profile value is too long')
         if not has_name(values['full_name']):raise ValueError('Enter your full name')
@@ -62,6 +75,7 @@ def install(app,current_user,require_roles):
         if values['phone']:checks.append(stored==values['phone'])
         if values['email']:checks.append(func.lower(Worker.email)==values['email'])
         if db.get_bind().dialect.name=='postgresql':db.execute(text('SELECT pg_advisory_xact_lock(64132979)'))
+        if application and db.query(AuditLog).filter_by(tenant_id=w.tenant_id,action='APPLICATION_REVIEWED',entity_type='application',entity_id=str(application.id)).first():raise ValueError('Application already reviewed')
         if db.query(Worker).filter(Worker.tenant_id==w.tenant_id,Worker.id!=w.id,or_(*checks)).first():raise ValueError('Contact details already belong to another profile; contact the recruiter')
         if not is_private and (w.identity_verified or w.skills_verified or w.documents_verified):
             for k in ['full_name','profession','skills','certificates','years_experience']:
@@ -82,16 +96,42 @@ def install(app,current_user,require_roles):
                 db.add(AuditLog(tenant_id=w.tenant_id,actor=actor,action='PROFILE_QUALIFIED',entity_type='worker',entity_id=str(w.id),details='First complete profile; identity and documents still require separate verification'))
             from collector.matching import sync_worker_matches
             sync_worker_matches(db,w)
+        if application:
+            db.add(AuditLog(tenant_id=w.tenant_id,actor=actor,action='APPLICATION_REVIEWED',entity_type='application',entity_id=str(application.id),details='Candidate details reviewed and applied to worker '+str(w.id)+'; no messaging permission or verification inferred'))
         db.commit()
+    @app.get('/applications')
+    def application_queue(request:Request,db=Depends(get_db)):
+        user=current_user(request,db)
+        if not user:return RedirectResponse('/login',303)
+        require_roles(user,'admin','recruiter')
+        reviewed={x.entity_id for x in db.query(AuditLog).filter_by(tenant_id=user.tenant_id,action='APPLICATION_REVIEWED',entity_type='application').all()}
+        rows=[]
+        for row in db.query(AuditLog).filter_by(tenant_id=user.tenant_id,action='APPLICATION_REVIEW_REQUESTED',entity_type='worker').filter(~AuditLog.id.in_([int(value) for value in reviewed if value.isdigit()])).order_by(AuditLog.id.desc()).limit(200).all():
+            if str(row.id) in reviewed:continue
+            w=db.query(Worker).filter_by(id=int(row.entity_id),tenant_id=user.tenant_id).first()
+            if not w:continue
+            try:values=json.loads(row.details)['values']
+            except (ValueError,KeyError,TypeError):continue
+            rows.append(dict(id=row.id,worker_id=w.id,existing_name=w.full_name,submitted_name=values.get('full_name',''),profession=values.get('profession',''),created_at=row.created_at))
+        response=views.TemplateResponse(request,'application_queue.html',dict(request=request,user=user,rows=rows,t=lambda s:translate(s,language(request)),lang=language(request),asset_version=asset_version()))
+        response.headers['Cache-Control']='no-store, private'
+        response.headers['Referrer-Policy']='no-referrer'
+        return response
     @app.get('/workers/{worker_id}/profile')
     def recruiter_form(worker_id:int,request:Request,db=Depends(get_db)):
-        user,w=admin(request,db,worker_id);return show(request,w,user)
+        user,w=admin(request,db,worker_id)
+        try:application_id=int(request.query_params.get('application','0'))
+        except ValueError:raise HTTPException(400,'Invalid application')
+        return show(request,w,user,application=proposal(db,w,application_id))
     @app.post('/workers/{worker_id}/profile')
     async def recruiter_save(worker_id:int,request:Request,db=Depends(get_db)):
         user,w=admin(request,db,worker_id);form=await request.form();verify_csrf(request,form)
-        try:save(db,w,form,'user:'+str(user.id),False)
+        try:application_id=int(form.get('application_id','0'))
+        except ValueError:raise HTTPException(400,'Invalid application')
+        application=proposal(db,w,application_id)
+        try:save(db,w,form,'user:'+str(user.id),False,application)
         except (ValueError,TypeError) as exc:
-            db.rollback();return show(request,w,user,error=str(exc),status=422)
+            db.rollback();return show(request,w,user,error=str(exc),status=422,application=application)
         return RedirectResponse('/workers/'+str(w.id),303)
     @app.get('/worker/{token}/profile')
     def candidate_form(token:str,request:Request,db=Depends(get_db)):
