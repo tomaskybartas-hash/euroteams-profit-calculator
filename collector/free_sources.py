@@ -176,6 +176,8 @@ def install(app,current_user,require_roles,page_ctx):
         # Durable four-hour cache bounds requests even when this URL is repeatedly visited.
         tid=int(os.getenv('WORKFORCE_ADMIN_TENANT_ID','1'))
         result=refresh(db,tid)
+        from collector.public_discovery import refresh as refresh_public_jobseekers
+        result["public_jobseekers"]=refresh_public_jobseekers(db,tid)
         from collector.acquisition_metrics import save_previous_day
         save_previous_day(db,tid)
         return result

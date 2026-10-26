@@ -12,7 +12,7 @@ from sqlalchemy.orm import Mapped, mapped_column, Session, with_loader_criteria
 from app.db import Base, get_db
 from app.models import Worker, Project, ProjectCandidate, Consent, Message, Tenant, AppUser
 from collector.intake import CandidateIntake, signer
-from collector.coresignal import SourceProfile
+from collector.coresignal import SourceProfile, SourceRun
 from collector.free_sources import FreeLead, FreeSourceState, FreeCollectionRun, fresh_leads, STATE_ID
 
 SEGMENTS={'general':'General Labour','welder':'Welders','pipefitter':'Pipefitters','fitter':'Fitters','mechanic':'Mechanics','carpenter':'Carpenters','mason':'Masons','electrician':'Electricians','scaffolder':'Scaffolders','other':'Other'}
@@ -337,7 +337,7 @@ def install(app,current_user,require_roles,page_ctx):
     @app.get('/sources',response_class=HTMLResponse)
     def sources(request:Request,db:Session=Depends(get_db)):
         user=user_for(request,db)
-        return render(request,user,'platform_sources.html',state=db.get(FreeSourceState,STATE_ID),runs=db.query(FreeCollectionRun).filter(FreeCollectionRun.tenant_id==user.tenant_id).order_by(FreeCollectionRun.id.desc()).limit(20).all(),lead_count=fresh_leads(db,user.tenant_id).count(),registrations=db.query(CandidateIntake).filter(CandidateIntake.tenant_id==user.tenant_id,CandidateIntake.status=='CREATED').count())
+        return render(request,user,'platform_sources.html',state=db.get(FreeSourceState,STATE_ID),runs=db.query(FreeCollectionRun).filter(FreeCollectionRun.tenant_id==user.tenant_id).order_by(FreeCollectionRun.id.desc()).limit(20).all(),lead_count=fresh_leads(db,user.tenant_id).count(),public_run=db.query(SourceRun).filter(SourceRun.tenant_id==user.tenant_id,SourceRun.run_key.like('liepajniekiem-public:%')).order_by(SourceRun.id.desc()).first(),registrations=db.query(CandidateIntake).filter(CandidateIntake.tenant_id==user.tenant_id,CandidateIntake.status=='CREATED').count())
 
     # Replace the legacy CSV export to prevent spreadsheet formula execution.
     app.router.routes[:]=[r for r in app.router.routes if getattr(r,'path','')!='/workers/export.csv']
