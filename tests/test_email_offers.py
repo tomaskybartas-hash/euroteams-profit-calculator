@@ -35,11 +35,11 @@ def test_daily_target_excludes_demo_ads_and_snapshots_previous_day(setup):
     client,engine=setup
     with Session(engine) as db:
         daily=daily_metrics(db,1)
-        assert daily['unique_added']==1 and daily['target']==300
-        assert daily['new_email']==1 and daily['ads_included'] is False
+        assert daily['unique_added']==0 and daily['search_contacts_added']==1 and daily['target']==300
+        assert daily['new_email']==0 and daily['ads_included'] is False
         save_previous_day(db,1);save_previous_day(db,1)
         assert db.query(DailyAcquisitionReport).count()==1
-    assert '1 / 300' in client.get('/').text
+    assert '0 / 300' in client.get('/').text
 
 
 def test_old_confirmed_offer_blocks_cross_channel_even_with_newer_draft(setup):

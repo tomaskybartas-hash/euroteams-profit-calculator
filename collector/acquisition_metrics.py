@@ -2,10 +2,10 @@
 from datetime import datetime,date,timedelta,timezone,time
 from zoneinfo import ZoneInfo
 import json
-from sqlalchemy import Integer,String,Text,DateTime,ForeignKey
+from sqlalchemy import Integer,String,Text,DateTime,ForeignKey,func
 from sqlalchemy.orm import Mapped,mapped_column
 from app.db import Base
-from app.models import Worker
+from app.models import Worker,AuditLog
 
 class DailyAcquisitionReport(Base):
     __tablename__='collector_daily_reports'
@@ -22,7 +22,12 @@ def daily_metrics(db,tenant_id,day=None):
     zone=ZoneInfo('Europe/Vilnius');today=datetime.now(zone).date();day=day or today
     start=datetime.combine(day,time.min,tzinfo=zone).astimezone(timezone.utc).replace(tzinfo=None)
     end=datetime.combine(day+timedelta(days=1),time.min,tzinfo=zone).astimezone(timezone.utc).replace(tzinfo=None)
-    rows=db.query(Worker).filter(Worker.tenant_id==tenant_id,Worker.created_at>=start,Worker.created_at<end).all()
+    all_rows=db.query(Worker).filter(Worker.tenant_id==tenant_id).all()
+    qualified={int(ident):at for ident,at in db.query(AuditLog.entity_id,func.min(AuditLog.created_at)).filter(AuditLog.tenant_id==tenant_id,AuditLog.entity_type=='worker',AuditLog.action=='PROFILE_QUALIFIED').group_by(AuditLog.entity_id).all() if ident.isdigit()}
+    rows=[w for w in all_rows if start<=qualified.get(w.id,w.created_at)<end]
+    from collector.profile_quality import profile_ready
+    prospects=sum(not profile_ready(w) and start<=w.created_at<end for w in all_rows)
+    rows=[w for w in rows if profile_ready(w)]
     profiles={p.worker_id:p.source for p in db.query(SourceProfile).filter(SourceProfile.tenant_id==tenant_id).all()}
     registrations={p.worker_id for p in db.query(CandidateIntake).filter(CandidateIntake.tenant_id==tenant_id,CandidateIntake.status=='CREATED').all()}
     by_source={}
@@ -30,7 +35,7 @@ def daily_metrics(db,tenant_id,day=None):
         name=profiles.get(worker.id,'Candidate registration' if worker.id in registrations else 'Manual / import')
         by_source[name]=by_source.get(name,0)+1
     elapsed=max(1,(min(datetime.utcnow(),end)-start).total_seconds())
-    return {'day':day.isoformat(),'timezone':'Europe/Vilnius','target':300,'unique_added':len(rows),'new_whatsapp':sum(bool(whatsapp_number(w,db.get(WorkerContact,w.id))) for w in rows),'new_email':sum(bool(w.email) for w in rows),'by_source':by_source,'unique_per_elapsed_hour':round(len(rows)/(elapsed/3600),2),'target_reason':'Target reached' if len(rows)>=300 else 'Insufficient source coverage','ads_included':False,'invalid':None,'errors':None,'limitations':'Invalid and error counts are not aggregated across all acquisition channels.'}
+    return {'day':day.isoformat(),'timezone':'Europe/Vilnius','target':300,'unique_added':len(rows),'search_contacts_added':prospects,'new_whatsapp':sum(bool(whatsapp_number(w,db.get(WorkerContact,w.id))) for w in rows),'new_email':sum(bool(w.email) for w in rows),'by_source':by_source,'unique_per_elapsed_hour':round(len(rows)/(elapsed/3600),2),'target_reason':'Target reached' if len(rows)>=300 else 'Insufficient source coverage','ads_included':False,'invalid':None,'errors':None,'limitations':'Invalid and error counts are not aggregated across all acquisition channels.'}
 
 
 def save_previous_day(db,tenant_id):

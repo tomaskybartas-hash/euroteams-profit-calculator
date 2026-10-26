@@ -12,6 +12,7 @@ from sqlalchemy.orm import Mapped, mapped_column, Session, with_loader_criteria
 from app.db import Base, get_db
 from app.models import Worker, Project, ProjectCandidate, Consent, Message, Tenant, AppUser
 from collector.intake import CandidateIntake, signer
+from collector.profile_quality import profile_ready,missing_fields
 from collector.coresignal import SourceProfile, SourceRun
 from collector.free_sources import FreeLead, FreeSourceState, FreeCollectionRun, fresh_leads, STATE_ID
 
@@ -121,7 +122,7 @@ def install(app,current_user,require_roles,page_ctx):
     locale_install(app,current_user)
     views=Jinja2Templates(directory=[str(Path(__file__).parent/'templates'),str(Path(__file__).parents[1]/'app'/'templates')])
     def ctx(request,user,**kw):
-        return page_ctx(request,user,asset_version=asset_version(),csrf_token=csrf(request),lang=language(request),t=lambda text:translate(text,language(request)),segments=SEGMENTS,completeness=__import__('collector.matching',fromlist=['completeness']).completeness,**kw)
+        return page_ctx(request,user,asset_version=asset_version(),csrf_token=csrf(request),lang=language(request),t=lambda text:translate(text,language(request)),segments=SEGMENTS,profile_ready=profile_ready,missing_fields=missing_fields,completeness=__import__('collector.matching',fromlist=['completeness']).completeness,**kw)
     def render(request,user,template,**kw):return views.TemplateResponse(request,template,ctx(request,user,**kw))
     def user_for(request,db):
         user=current_user(request,db)
@@ -184,6 +185,8 @@ def install(app,current_user,require_roles,page_ctx):
         user=current_user(request,db)
         if not user:return RedirectResponse('/login',303)
         rows=db.query(Worker).filter(Worker.tenant_id==user.tenant_id).all()
+        prospect_total=sum(not profile_ready(w) for w in rows)
+        rows=[w for w in rows if profile_ready(w)]
         now=datetime.utcnow();local_now=now.replace(tzinfo=timezone.utc).astimezone(ZoneInfo('Europe/Vilnius'));counts={k:0 for k in SEGMENTS}
         local_date=lambda value:value.replace(tzinfo=timezone.utc).astimezone(ZoneInfo('Europe/Vilnius')).date()
         next_tick=min(now.replace(hour=h,minute=17,second=0,microsecond=0)+timedelta(days=d) for d in [0,1] for h in [0,6,12,18] if now.replace(hour=h,minute=17,second=0,microsecond=0)+timedelta(days=d)>now)
@@ -193,7 +196,7 @@ def install(app,current_user,require_roles,page_ctx):
         from collector.offer_responses import OfferResponse
         interested={wid for (wid,) in db.query(WorkerContact.worker_id).join(Worker,Worker.id==WorkerContact.worker_id).filter(Worker.tenant_id==user.tenant_id,WorkerContact.status=='Interested').all()}
         interested.update(wid for (wid,) in db.query(OfferResponse.worker_id).join(Worker,Worker.id==OfferResponse.worker_id).filter(OfferResponse.tenant_id==user.tenant_id,Worker.tenant_id==user.tenant_id,OfferResponse.answer=='INTERESTED').all())
-        stats={'Total Workers':len(rows),'Available Workers':sum(w.availability_status=='AVAILABLE NOW' for w in rows),'New Today':sum(local_date(w.created_at)==local_now.date() for w in rows),'New This Week':sum(w.created_at>=now-timedelta(days=7) for w in rows),'Contacted':contacts.filter(ContactHistory.status=='CONTACTED').count(),'Interested':len(interested),'Active Jobs':len(jobs),'Matches':db.query(ProjectCandidate).join(Project).filter(Project.tenant_id==user.tenant_id,Project.status!='CLOSED').count()}
+        stats={'Search contacts':prospect_total,'Candidates for screening':len(rows),'Available Workers':sum(w.availability_status=='AVAILABLE NOW' for w in rows),'New Today':sum(local_date(w.created_at)==local_now.date() for w in rows),'New This Week':sum(w.created_at>=now-timedelta(days=7) for w in rows),'Contacted':contacts.filter(ContactHistory.status=='CONTACTED').count(),'Interested':len(interested),'Active Jobs':len(jobs),'Matches':db.query(ProjectCandidate).join(Project).filter(Project.tenant_id==user.tenant_id,Project.status!='CLOSED').count()}
         from collector.acquisition_metrics import daily_metrics,save_previous_day
         save_previous_day(db,user.tenant_id)
         stats.update({'WhatsApp Contacts':sum(bool(whatsapp_number(w,db.get(WorkerContact,w.id))) for w in rows),'Email Contacts':sum(bool(w.email) for w in rows),'Verified':sum(w.identity_verified and w.documents_verified and w.skills_verified for w in rows)})
@@ -220,17 +223,25 @@ def install(app,current_user,require_roles,page_ctx):
             if f.get('quality'):int(f['quality'])
             page=max(1,int(f.get('page','1')))
         except ValueError:raise HTTPException(400,'Invalid filter')
-        sourced={x.worker_id:x.source_url for x in db.query(SourceProfile).filter(SourceProfile.tenant_id==user.tenant_id).all()}
+        source_rows={x.worker_id:x for x in db.query(SourceProfile).filter(SourceProfile.tenant_id==user.tenant_id).all()}
+        sourced={wid:row.source_url for wid,row in source_rows.items()}
         registered={x.worker_id for x in db.query(CandidateIntake).filter(CandidateIntake.tenant_id==user.tenant_id,CandidateIntake.status=='CREATED').all()}
         rows=query.order_by(Worker.created_at.desc()).all()
         all_rows=db.query(Worker).filter(Worker.tenant_id==user.tenant_id).all();counts={k:0 for k in SEGMENTS}
-        for w in all_rows:counts[segment(w)]+=1
-        def source(w):return 'Professional profile' if w.id in sourced else 'Candidate registration' if w.id in registered else 'Manual / import'
+        view=f.get('stage','interested' if f.get('status')=='Interested' else 'candidates')
+        if view not in ['candidates','prospects','interested','all']:raise HTTPException(400,'Invalid stage')
+        def source(w):return 'Public advertisement' if w.id in source_rows and source_rows[w.id].source!='coresignal' else 'Professional profile' if w.id in source_rows else 'Candidate registration' if w.id in registered else 'Manual / import'
         if f.get('segment'):rows=[w for w in rows if segment(w)==f['segment']]
         if f.get('source'):rows=[w for w in rows if source(w)==f['source']]
         contacts={c.worker_id:c for c in db.query(WorkerContact).join(Worker,Worker.id==WorkerContact.worker_id).filter(Worker.tenant_id==user.tenant_id).all()}
         from collector.offer_responses import OfferResponse
         interested_ids={wid for (wid,) in db.query(OfferResponse.worker_id).filter(OfferResponse.tenant_id==user.tenant_id,OfferResponse.answer=='INTERESTED').all()}
+        interested_ids.update(wid for wid,contact in contacts.items() if contact.status=='Interested')
+        stage_counts={'prospects':sum(not profile_ready(w) for w in all_rows),'candidates':sum(profile_ready(w) for w in all_rows),'interested':sum(w.id in interested_ids for w in all_rows),'all':len(all_rows)}
+        def in_stage(w):return True if view=='all' else w.id in interested_ids if view=='interested' else profile_ready(w) if view=='candidates' else not profile_ready(w)
+        rows=[w for w in rows if in_stage(w)]
+        for w in all_rows:
+            if in_stage(w):counts[segment(w)]+=1
         if f.get('has_whatsapp') in ['yes','no']:rows=[w for w in rows if bool(whatsapp_number(w,contacts.get(w.id)))==(f['has_whatsapp']=='yes')]
         if f.get('has_email') in ['yes','no']:rows=[w for w in rows if bool(w.email)==(f['has_email']=='yes')]
         if f.get('status')=='Interested':rows=[w for w in rows if w.id in interested_ids or (w.id in contacts and contacts[w.id].status=='Interested')]
@@ -239,7 +250,7 @@ def install(app,current_user,require_roles,page_ctx):
             from collector.matching import completeness
             rows=[w for w in rows if completeness(w)>=int(f['quality'])]
         total=len(rows);rows=rows[(page-1)*30:page*30]
-        return render(request,user,'platform_workers.html',workers=rows,filters=f,counts=counts,total=total,page=page,has_more=total>page*30,source=source,sourced=sourced,contacts=contacts,interested_ids=interested_ids,wa=whatsapp_number,statuses=STATUSES,countries=sorted({w.country for w in all_rows}),page_query=urlencode({k:v for k,v in f.items() if k!='page'}))
+        return render(request,user,'platform_workers.html',workers=rows,filters=f,counts=counts,view=view,stage_counts=stage_counts,total=total,page=page,has_more=total>page*30,source=source,sourced=sourced,contacts=contacts,interested_ids=interested_ids,wa=whatsapp_number,statuses=STATUSES,countries=sorted({w.country for w in all_rows}),page_query=urlencode({k:v for k,v in f.items() if k!='page'}))
 
     @app.get('/workers/{worker_id}/request',response_class=HTMLResponse)
     def job_request(worker_id:int,request:Request,job_id:int=0,channel:str="",db:Session=Depends(get_db)):
@@ -464,3 +475,6 @@ def install(app,current_user,require_roles,page_ctx):
         from collector.polish_discovery import refresh as polish_refresh
         polish_refresh(db,user.tenant_id)
         return RedirectResponse('/sources',303)
+
+    from collector.profile_completion import install as install_profile_completion
+    install_profile_completion(app,current_user,require_roles)

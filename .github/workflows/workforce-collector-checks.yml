@@ -36,4 +36,4 @@ jobs:
         working-directory: workforce_live_prod_clean
         env:
           PYTHONPATH: .:..
-        run: python -m pytest ../tests/test_public_discovery.py ../tests/test_romanian_discovery.py ../tests/test_polish_discovery.py ../tests/test_collection_history.py ../tests/test_platform_flow.py ../tests/test_offer_responses.py ../tests/test_email_offers.py ../tests/test_built_app_smoke.py ../tests/test_worker_collector.py ../tests/test_workforce_bridge_refresh.py ../tests/test_import_pipeline.py -q --disable-warnings
+        run: python -m pytest ../tests/test_profile_quality.py ../tests/test_public_discovery.py ../tests/test_romanian_discovery.py ../tests/test_polish_discovery.py ../tests/test_collection_history.py ../tests/test_platform_flow.py ../tests/test_offer_responses.py ../tests/test_email_offers.py ../tests/test_built_app_smoke.py ../tests/test_worker_collector.py ../tests/test_workforce_bridge_refresh.py ../tests/test_import_pipeline.py -q --disable-warnings

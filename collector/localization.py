@@ -6,7 +6,30 @@ from fastapi.responses import RedirectResponse,Response
 from app.db import SessionLocal,get_db
 
 # Translation keys also cover the legacy administration and document templates.
-PAIRS='''Lithuania, Bulgaria, Spain, Italy|Lietuva, Bulgarija, Ispanija, Italija
+PAIRS='''Search contacts|Paieškos kontaktai
+Candidates for screening|Kandidatai atrankai
+Interested candidates|Susidomėję kandidatai
+All records|Visi įrašai
+Public advertisement|Viešas skelbimas
+Incomplete source contacts are kept separately. A complete profile is not verified identity or a hiring decision.|Nepilni šaltinių kontaktai laikomi atskirai. Užpildytas profilis nepatvirtina tapatybės ir nereiškia sprendimo įdarbinti.
+Missing information|Trūkstami duomenys
+Full name|Vardas ir pavardė
+Contact details|Kontaktiniai duomenys
+Experience or skills|Patirtis arba įgūdžiai
+Recent availability confirmation|Neseniai patvirtintas pasirengimas dirbti
+Complete profile|Papildyti profilį
+Candidate completion form|Asmeninė kandidato forma
+New search contacts|Nauji paieškos kontaktai
+Only complete profiles count toward this target. Search contacts are excluded.|Šiam tikslui skaičiuojami tik užpildyti kandidatų profiliai. Paieškos kontaktai neįtraukiami.
+Profile incomplete|Profilis nepilnas
+Supply your own details or details confirmed directly with the candidate. This form does not verify identity or documents.|Pateikite savo arba tiesiogiai su kandidatu patikslintus duomenis. Forma nepatvirtina tapatybės ar dokumentų.
+I confirm that these details were supplied by the candidate.|Patvirtinu, kad duomenis pateikė pats kandidatas.
+I agree to receive Euroteams job offers by email.|Sutinku gauti Euroteams darbo pasiūlymus el. paštu.
+I agree to receive Euroteams job offers by WhatsApp.|Sutinku gauti Euroteams darbo pasiūlymus per WhatsApp.
+Save profile|Išsaugoti profilį
+Profile saved. Your recruiter can review the supplied information.|Profilis išsaugotas. Atrankos specialistas galės peržiūrėti pateiktus duomenis.
+Confirm that these details were supplied by the candidate|Patvirtinkite, kad duomenis pateikė pats kandidatas
+Lithuania, Bulgaria, Spain, Italy|Lietuva, Bulgarija, Ispanija, Italija
 Lithuania, Poland, Bulgaria, Spain, Italy|Lietuva, Lenkija, Bulgarija, Ispanija, Italija
 Source notes and restrictions|Šaltinio pastabos ir apribojimai
 project country outside stated preferences|Projekto šalis neatitinka nurodytų pageidavimų

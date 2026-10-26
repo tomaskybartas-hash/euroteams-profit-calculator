@@ -1,11 +1,12 @@
 """Evidence-based ranking. Missing fields do not establish a positive match."""
 import re
 from app.models import Worker
+from collector.profile_quality import profile_ready,missing_fields,has_name
 from .worker_collector import CandidateRecord,ProjectNeed,canonical_country,score_candidate
 
 
 def completeness(worker):
-    fields=[worker.full_name,worker.phone or worker.email,worker.country,worker.profession,worker.city,worker.skills,worker.languages,worker.certificates,worker.preferred_countries,worker.preferred_rotation,worker.expected_salary_net_hour,worker.years_experience,worker.last_availability_confirmed,worker.availability_status if worker.availability_status!='UNKNOWN' else '']
+    fields=[worker.full_name if has_name(worker.full_name) else '',worker.phone or worker.email,worker.country,worker.profession,worker.city,worker.skills,worker.languages,worker.certificates,worker.preferred_countries,worker.preferred_rotation,worker.expected_salary_net_hour,worker.years_experience,worker.last_availability_confirmed,worker.availability_status if worker.availability_status!='UNKNOWN' else '']
     return round(100*sum(bool(x) for x in fields)/len(fields))
 
 
@@ -16,6 +17,7 @@ def score(worker,project):
     result=score_candidate(record,need)
     reasons=[x for x in result.reasons if x!='experience' or worker.years_experience>0]
     blockers=list(result.blockers)
+    if not profile_ready(worker):blockers.append('Profile incomplete')
     preferred={canonical_country(x) for x in split(worker.preferred_countries)}
     destination=canonical_country(project.country)
     if preferred and destination not in preferred:
@@ -30,6 +32,7 @@ def score(worker,project):
 def ranked_workers(db,project,tenant_id=1,limit=100,include_ineligible=False):
     rows=[]
     for worker in db.query(Worker).filter(Worker.tenant_id==tenant_id).all():
+        if not profile_ready(worker):continue
         result=score(worker,project)
         if include_ineligible or result['eligible']:rows.append((worker,result))
     rows.sort(key=lambda item:(item[1]['eligible'],item[1]['match_score']),reverse=True)

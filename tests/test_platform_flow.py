@@ -38,9 +38,9 @@ def test_all_workspace_pages_and_segments_hide_demo_and_other_tenant(setup):
     for path in ['/workers/export.csv','/','/workers','/matches','/sources','/settings','/workers/1/request','/workers/1/contact-history','/workers/1','/projects/1/edit']:
         r=client.get(path);assert r.status_code==200,(path,r.text)
         assert 'Other Tenant' not in r.text and 'Piotr Kowalski' not in r.text
-    assert 'QA Welder' in client.get('/workers?segment=welder&process=135').text
-    assert 'QA Welder' not in client.get('/workers?segment=carpenter').text
-    assert 'QA Welder' in client.get('/workers?q=qa-worker%40example.test').text
+    assert 'QA Welder' in client.get('/workers?stage=all&segment=welder&process=135').text
+    assert 'QA Welder' not in client.get('/workers?stage=all&segment=carpenter').text
+    assert 'QA Welder' in client.get('/workers?stage=all&q=qa-worker%40example.test').text
     assert client.get('/workers/2/request').status_code==404
 
 def test_whatsapp_draft_is_not_a_sent_message_and_deduplicates(setup):
@@ -68,13 +68,13 @@ def test_locales_persist_account_and_preserve_option_values(setup):
     client,engine=setup
     client.get('/language/lt?next=/workers')
     page=client.get('/workers').text
-    assert '<html lang="lt">' in page and 'Siųsti darbo pasiūlymą' in page
+    assert '<html lang="lt">' in page and 'Paieškos kontaktai' in page
     assert 'value="AVAILABLE NOW"' in page and 'GALI DIRBTI DABAR' in page
     request=client.get('/workers/1/request?job_id=1').text
     assert 'Sveiki, QA,' in request
     with Session(engine) as db:assert db.get(UserPreference,1).language=='lt'
     client.get('/language/en?next=/workers')
-    assert 'Send Job Request' in client.get('/workers').text
+    assert 'Candidates for screening' in client.get('/workers').text
     assert client.get('/language/lt?next=//evil.example',follow_redirects=False).headers['location']=='/'
 
 def test_csrf_and_latest_revocation_block_outreach(setup):
@@ -101,6 +101,8 @@ def test_job_edit_persists_and_normalizes_numbers(setup):
 
 def test_new_job_form_saves_and_matches_without_sending(setup):
     client,engine=setup
+    with Session(engine) as db:
+        worker=db.get(Worker,1);worker.preferred_countries='LT';worker.last_availability_confirmed=date.today();worker.availability_status='AVAILABLE NOW';db.commit()
     page=client.get('/projects/new').text
     token=hidden(page,'csrf')
     data={'csrf':token,'name':'New matching job','country':'LT','profession':'Welder 135','start_date':date.today().isoformat(),'salary_net_hour':'21','citizenship_requirement':'Any','workers_needed':'1','duration_weeks':'8','weekly_hours':'40'}
@@ -122,7 +124,7 @@ def test_draft_scope_and_xss_are_not_loosened_by_translation(setup):
     with Session(engine) as db:
         w=db.get(Worker,1);w.full_name='<img src=x onerror=alert(1)>';db.commit()
     client.get('/language/lt?next=/workers')
-    page=client.get('/workers').text
+    page=client.get('/workers?stage=all').text
     assert '&lt;img src=x onerror=alert(1)&gt;' in page
     assert '<img src=x onerror=alert(1)>' not in page
     assert client.get('/workers/2/contact-history').status_code==404
