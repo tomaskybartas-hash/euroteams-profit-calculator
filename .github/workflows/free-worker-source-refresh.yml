@@ -13,12 +13,12 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 10
     steps:
-      - name: Refresh the fixed public RSS source
+      - name: Refresh bounded public jobseeker sources
         shell: bash
         run: |
-          curl --fail --silent --show-error --retry 3 --retry-all-errors --retry-delay 20 --max-time 100 https://euroteams-workforce-collector-preview.onrender.com/collector/free-source/refresh --output source-result.json
+          curl --fail --silent --show-error --retry 1 --retry-all-errors --retry-delay 20 --max-time 240 https://euroteams-workforce-collector-preview.onrender.com/collector/free-source/refresh --output source-result.json
           python - <<'PY'
           import json
           with open('source-result.json') as source_file:
@@ -26,4 +26,10 @@ jobs:
           print(result)
           if result.get('status') != 'COMPLETED':
               raise SystemExit('Public RSS refresh failed; inspect the source status')
+          for key in ('public_jobseekers', 'romanian_jobseekers'):
+              source = result.get(key)
+              if not source:
+                  print(f'::warning::{key}: no operational result returned')
+              elif source.get('state') not in ('COMPLETED',):
+                  print(f'::warning::{key}: {source.get("state", "UNKNOWN")} {source.get("error", "")}')
           PY
