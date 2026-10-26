@@ -65,3 +65,10 @@ def test_second_page_failure_keeps_first_page_candidates(monkeypatch):
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
         rows,failed=source.discover(client)
     assert len(rows)==1 and failed==1
+
+
+def test_helper_and_domestic_plumber_do_not_become_industrial_specialists():
+    row=source.parse_listing(listing('Szukam pracy dorywczej jako pomocnik mechanika tylko Suwałki'))[0]
+    assert row['profession']=='general labour' and row['preferred_countries']=='PL'
+    row=source.parse_listing(listing('Szukam pracy jako hydraulik'))[0]
+    assert row['profession']=='plumber'

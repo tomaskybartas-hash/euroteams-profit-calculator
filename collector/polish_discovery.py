@@ -52,9 +52,10 @@ def parse_listing(raw,now=None):
         if not urls:continue
         if not re.search(r'szukam|poszukuje|podejme',plain) or re.search(r'szukam\s+pracownik|zatrudni|poszukuje\s+pracownik',plain):continue
         if re.search(r'odpada[^.]*budow|procz\s+budow|bez\s+budowl',plain):continue
-        roles=[('welder',r'spawacz|spawani'),('pipefitter',r'monter\s+rur|hydraulik'),('electrician',r'elektryk'),('carpenter',r'ciesla|stolarz|stolarni'),('mason',r'murarz'),('mechanic',r'mechanik'),('general labour',r'budow|fizyczn|pomocnik|magazyn|produkcj')]
+        roles=[('welder',r'spawacz|spawani'),('pipefitter',r'monter\s+rur|rurociag'),('plumber',r'hydraulik'),('electrician',r'elektryk'),('carpenter',r'ciesla|stolarz|stolarni'),('mason',r'murarz'),('mechanic',r'mechanik'),('general labour',r'budow|fizyczn|pomocnik|magazyn|produkcj')]
         role=next((r for r,p in roles if re.search(p,plain)),None)
         if not role:continue
+        if re.search(r'pomocnik(?:a)?\s+mechanik',plain):role='general labour'
         dates=re.findall(r'(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)',body)
         if not dates:continue
         try:published=datetime.strptime(dates[-1],'%Y-%m-%d')
@@ -69,7 +70,7 @@ def parse_listing(raw,now=None):
         emails=set(x.lower() for x in re.findall(r'(?<![\w.+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?![\w.-])',body))
         if len(emails)>1:continue
         url=urls[0];sid=hashlib.sha256(url.encode()).hexdigest()[:20]
-        local=bool(re.search(r'w suwalkach|na terenie miasta|suwalki i okolice',plain))
+        local=bool(re.search(r'w suwalkach|tylko suwalki|na terenie miasta|suwalki i okolice',plain))
         short=bool(re.search(r'dorywcz|weekend|na\s+\d+\s+dni|dwa tygodnie|popoludni',plain))
         notes=('Local work requested; destination PL only. ' if local else 'Destination preference not confirmed. ')+('Short-term or part-time work requested. ' if short else '')+'Profession is inferred from the public listing excerpt; exact skills and current availability require confirmation.'
         rows.append(dict(source_id=sid,source_url=url,phone='+'+digits,email=next(iter(emails),''),profession=role,published_at=published,full_name='Vardas nepateiktas · PL-'+sid[:8],preferred_countries='PL' if local else '',notes=notes))
