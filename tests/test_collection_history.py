@@ -107,3 +107,35 @@ def test_manual_refresh_requires_admin_and_csrf(setup,monkeypatch):
         db.get(AppUser,1).role='viewer';db.commit()
     assert client.post('/collector/free-source/run',data={'csrf':token}).status_code==403
     assert calls==[(1,True)]
+
+
+def test_only_visible_unambiguous_rss_contacts_are_used():
+    from collector.free_sources import visible_rss_contacts
+    assert visible_rss_contacts('Date: 20261026, salary 20000000')=={}
+    assert visible_rss_contacts('Tel. 20000001')['phone']=='+37120000001'
+    assert visible_rss_contacts('+371 2000 0001')['phone']=='+37120000001'
+    assert visible_rss_contacts('<script>+37120000001</script>')=={}
+    assert visible_rss_contacts('Tel. 20****01')=={}
+    assert visible_rss_contacts('Tel. 20000001, tel. 20000002')=={}
+    assert visible_rss_contacts('CONTACT@EXAMPLE.TEST')['email']=='contact@example.test'
+
+
+def test_rss_contact_creates_one_unverified_profile_and_never_grants_consent(setup):
+    from collector.free_sources import store_rss_contacts
+    from collector.coresignal import SourceProfile
+    from app.models import Worker,Consent
+    _,engine=setup
+    entry={'source_url':'https://www.ss.com/msg/ru/work/i-search-for-work/welder/testqa.html','profession':'welder','published_at':datetime.utcnow()}
+    contacts={'phone':'+37120000001','email':'public-qa@example.test'}
+    with Session(engine) as db:
+        assert store_rss_contacts(db,1,entry,contacts)
+        db.commit()
+        profile=db.query(SourceProfile).one();worker=db.get(Worker,profile.worker_id)
+        assert worker.phone==contacts['phone'] and worker.email==contacts['email']
+        assert worker.availability_status=='UNKNOWN' and not worker.eu_citizen and not worker.identity_verified
+        assert worker.last_availability_confirmed is None
+        assert not db.query(Consent).filter_by(worker_id=worker.id).count()
+        assert not store_rss_contacts(db,1,entry,contacts)
+        entry['source_url']=entry['source_url'].replace('testqa','otherqa')
+        assert not store_rss_contacts(db,1,entry,contacts)
+        assert db.query(SourceProfile).count()==1

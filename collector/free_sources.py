@@ -48,6 +48,55 @@ def clean(value):
     return re.sub(r'\s+',' ',value).strip()
 
 
+
+def visible_rss_contacts(value):
+    """Read only contacts voluntarily written in the public RSS text, never reveal calls."""
+    from collector.public_discovery import Document
+    visible=Document(value or '').text
+    phones=set()
+    patterns=[r'(?<!\w)\+371[ ()-]*2(?:[ ()-]*[0-9]){7}(?![0-9])',
+              r'(?:tel(?:efons?|ephone)?|phone|whatsapp|t[aā]lrunis|тел(?:ефон)?)\s*[.:=-]?\s*((?:\+371[ ()-]*)?2(?:[ ()-]*[0-9]){7})(?![0-9])']
+    for pattern in patterns:
+        for value in re.findall(pattern,visible,re.I):
+            digits=re.sub(r'\D','',value)
+            if len(digits)==8:digits='371'+digits
+            if len(digits)==11 and digits.startswith('3712'):phones.add('+'+digits)
+    emails={x.lower() for x in re.findall(r'(?<![\w.+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?![\w.-])',visible)}
+    if len(phones)>1 or len(emails)>1:return {}
+    return {'phone':next(iter(phones),''),'email':next(iter(emails),'')} if phones or emails else {}
+
+
+def store_rss_contacts(db,tenant_id,entry,contacts):
+    """A public contact is an unverified prospect, never a marketing opt-in."""
+    from app.models import Worker,AuditLog
+    from collector.coresignal import SourceProfile
+    from sqlalchemy import func
+    import hashlib,secrets
+    if not contacts or not entry.get('published_at'):return False
+    url=entry['source_url'];source='ss-public-rss'
+    sid=hashlib.sha256(url.encode()).hexdigest()[:20]
+    if db.query(SourceProfile).filter_by(tenant_id=tenant_id,source_url=url).first():return False
+    checks=[]
+    phone=contacts.get('phone','');email=contacts.get('email','')
+    if phone:
+        normalized=Worker.phone
+        for char in (' ','-','(',')','.'):normalized=func.replace(normalized,char,'')
+        checks.append(normalized==phone)
+    if email:checks.append(func.lower(Worker.email)==email)
+    if not checks or db.query(Worker).filter(Worker.tenant_id==tenant_id,or_(*checks)).first():return False
+    worker=Worker(tenant_id=tenant_id,full_name='Public jobseeker LV · '+sid[:8],country='LV',
+        profession=entry['profession'],phone=phone,email=email,availability_status='UNKNOWN',eu_citizen=False,
+        ready_to_deploy=False,identity_verified=False,documents_verified=False,skills_verified=False,
+        years_experience=0,preferred_channel='Phone' if phone else 'Email',self_service_token=secrets.token_urlsafe(32),
+        work_permit_notes='Public RSS work-seeking advertisement. Name, current availability and right to work unverified; no messaging opt-in. Source: '+url)
+    db.add(worker);db.flush()
+    db.add(SourceProfile(tenant_id=tenant_id,worker_id=worker.id,source=source,source_id=sid,source_url=url,
+        reported_title='Public RSS jobseeker advertisement · '+entry['profession'],provider_updated_at=entry['published_at'].isoformat(),
+        verification_status='UNCONFIRMED',permission_basis='Minimal public recruitment contact written directly in an official jobseeker RSS feed; source attribution retained; no messaging consent inferred'))
+    db.add(AuditLog(tenant_id=tenant_id,actor='public-rss-discovery',action='PUBLIC_JOBSEEKER_COLLECTED',entity_type='worker',entity_id=str(worker.id),details='source='+source+'; no messaging consent inferred'))
+    return True
+
+
 def parse_feed(raw,category="welder"):
     if len(raw)>1_000_000 or b'<!DOCTYPE' in raw.upper() or b'<!ENTITY' in raw.upper():
         raise ValueError('unsupported_feed')
@@ -75,7 +124,7 @@ def parse_feed(raw,category="welder"):
         except (ValueError,TypeError,OverflowError):pass
         if posted and (posted<datetime.utcnow()-timedelta(days=30) or posted>datetime.utcnow()+timedelta(days=1)):
             continue
-        results.append({'source_url':url,'title':title[:180],'published_at':posted,'profession':FEEDS[category],'source':'ss-jobseeker-'+category+'-rss'})
+        results.append({'source_url':url,'title':title[:180],'published_at':posted,'profession':FEEDS[category],'source':'ss-jobseeker-'+category+'-rss','public_contacts':visible_rss_contacts(item.findtext('description'))})
     return results
 
 
@@ -139,7 +188,12 @@ def refresh(db, tenant_id=1, client=None, force=False):
             except (httpx.HTTPError,ValueError,ET.ParseError) as exc:
                 feed_errors.append(category+':'+(str(exc.response.status_code) if isinstance(exc,httpx.HTTPStatusError) else type(exc).__name__))
         state.found=len(entries);state.added=0;state.duplicates=0
+        contact_ads=profiles_added=0
         for entry in entries:
+            contacts=entry.pop('public_contacts',{})
+            if contacts:
+                contact_ads+=1
+                profiles_added+=int(store_rss_contacts(db,tenant_id,entry,contacts))
             old=db.query(FreeLead).filter(FreeLead.source_url==entry['source_url']).first()
             if old:
                 old.last_seen_at=now;state.duplicates+=1
@@ -161,7 +215,7 @@ def refresh(db, tenant_id=1, client=None, force=False):
     finally:
         if own:client.close()
     return {'status':state.status,'found':state.found,'added':state.added,'duplicates':state.duplicates,'error':state.error,
-            'run_id':run.id,'seconds':round(run.seconds,3),'active_sources':run.successful_sources}
+            'run_id':run.id,'seconds':round(run.seconds,3),'active_sources':run.successful_sources,'rss_public_contact_ads':locals().get('contact_ads',0),'new_worker_profiles':locals().get('profiles_added',0)}
 
 
 def install(app,current_user,require_roles,page_ctx):
