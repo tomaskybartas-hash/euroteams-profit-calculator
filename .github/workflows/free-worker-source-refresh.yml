@@ -13,8 +13,20 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
+      - name: Verify the persistent production database is ready
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --retry 1 --retry-delay 10 --max-time 60 https://euroteams-workforce-collector-preview.onrender.com/collector/ready --output readiness.json
+          python - <<'PY'
+          import json
+          with open('readiness.json') as ready_file:
+              ready = json.load(ready_file)
+          print(ready)
+          if not ready.get('ok') or not ready.get('persistent'):
+              raise SystemExit('Production database readiness check failed')
+          PY
       - name: Refresh bounded public jobseeker sources
         shell: bash
         run: |
