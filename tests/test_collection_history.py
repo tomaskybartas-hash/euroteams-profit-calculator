@@ -139,3 +139,17 @@ def test_rss_contact_creates_one_unverified_profile_and_never_grants_consent(set
         entry['source_url']=entry['source_url'].replace('testqa','otherqa')
         assert not store_rss_contacts(db,1,entry,contacts)
         assert db.query(SourceProfile).count()==1
+
+
+def test_full_rss_refresh_reports_public_contacts_without_exposing_them(setup):
+    from collector.coresignal import SourceProfile
+    _,engine=setup
+    posted=format_datetime(datetime.now(timezone.utc))
+    raw=f'<rss><channel><item><title>Ищу работу сварщика</title><description>Tel. +371 20000001</description><link>https://www.ss.com/msg/ru/work/i-search-for-work/welder/testcontact.html</link><pubDate>{posted}</pubDate></item></channel></rss>'.encode()
+    with Session(engine) as db,httpx.Client(transport=httpx.MockTransport(lambda request:httpx.Response(200,content=raw))) as client:
+        result=refresh(db,1,client)
+        assert result['status']=='COMPLETED' and result['new_worker_profiles']==1
+        assert result['rss_public_contact_ads']==1
+        assert db.query(SourceProfile).filter_by(source='ss-public-rss').count()==1
+        assert '+371' not in str(result)
+        assert refresh(db,1,client)['cached']
